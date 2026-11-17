@@ -25,13 +25,13 @@ if (!$me) { ?>
   <div class="brand"><i class="fa-solid fa-book-open-reader"></i> පුස්තකාල පද්ධතිය</div>
   <button class="theme-btn" onclick="toggleTheme()"><i class="fa-solid fa-circle-half-stroke"></i></button>
 </div></div>
-<div class="wrap" style="max-width:400px;margin-top:40px">
-  <form method="post" class="card">
-    <h2><i class="fa-solid fa-right-to-bracket"></i> ඇතුළු වන්න</h2>
+<div class="wrap" style="max-width:400px;margin-top:60px">
+  <form method="post" class="card" style="box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
+    <h2 style="text-align:center;color:var(--ac);margin-bottom:20px;"><i class="fa-solid fa-right-to-bracket"></i> ඇතුළු වන්න</h2>
     <label>පරිශීලක නාමය (Username)</label><input name="u" autofocus autocomplete="username">
     <label>මුරපදය (Password)</label><input type="password" name="p" autocomplete="current-password">
-    <?php if ($bad) echo '<p style="color:var(--warn)">පරිශීලක නාමය හෝ මුරපදය වැරදියි</p>'; ?>
-    <p><button class="btn" style="width:100%">ඇතුළු වන්න</button></p>
+    <?php if ($bad) echo '<p style="color:var(--warn);font-size:13px;margin-top:5px;">පරිශීලක නාමය හෝ මුරපදය වැරදියි</p>'; ?>
+    <p style="margin-top:20px;"><button class="btn" style="width:100%;justify-content:center;">ඇතුළු වන්න</button></p>
   </form>
 </div>
 <script>function toggleTheme(){const h=document.documentElement,c=h.getAttribute('data-theme'),n=c==='dark'?'light':'dark';h.setAttribute('data-theme',n);localStorage.setItem('theme',n);}</script>
@@ -50,7 +50,7 @@ if (!$me) { ?>
 <div class="top"><div class="in">
   <div class="brand"><i class="fa-solid fa-book-open-reader"></i> <span data-i="brand">පුස්තකාල පද්ධතිය</span></div>
   <div class="who" style="display:flex;align-items:center;gap:12px;">
-    <button class="theme-btn" onclick="toggleLang()" title="Change Language" style="font-size:13px;font-weight:bold;width:auto;padding:0 10px;border-radius:99px;"><i class="fa-solid fa-language"></i> <span id="langLbl">EN</span></button>
+    <button class="theme-btn" onclick="toggleLang()" title="Change Language" style="font-size:13px;font-weight:bold;width:auto;padding:0 12px;border-radius:99px;"><i class="fa-solid fa-language"></i> <span id="langLbl">EN</span></button>
     <button class="theme-btn" onclick="toggleTheme()" title="Toggle Dark/Light Mode"><i class="fa-solid fa-circle-half-stroke"></i></button>
     <span><i class="fa-solid fa-user"></i> <?= htmlspecialchars($me['name']) ?> (<?= $me['role']==='admin'?'පරිපාලක':($me['role']==='librarian'?'ලයිබ්‍රේරියන් ('.$me['lib_name'].')':'සාමාජික: '.$me['lib_name']) ?>)</span>
     <a href="?logout=1"><i class="fa-solid fa-power-off"></i> පිටවන්න</a>
@@ -126,9 +126,9 @@ function qr(t){var o=qrcode(0,'M');o.addData(t);o.make();return o.createSvgTag({
 
 function renderLibSelector(){
   if(!IS_ADM) return;
-  $('libSelectorWrap').innerHTML = '<div class="card" style="margin-bottom:15px;padding:12px 20px;display:flex;align-items:center;gap:15px;background:var(--ac);color:#fff">'+
+  $('libSelectorWrap').innerHTML = '<div class="card" style="margin-bottom:15px;padding:12px 20px;display:flex;align-items:center;gap:15px;background:linear-gradient(135deg, var(--ac), #3b82f6);color:#fff;border:none;">'+
     '<b><i class="fa-solid fa-building-columns"></i> '+(lang=='si'?'පුස්තකාලය තෝරන්න:':'Select Library:')+'</b>'+
-    '<select id="libSel" onchange="selectedLib=this.value;render()" style="width:250px;padding:6px 12px;border-radius:8px">'+
+    '<select id="libSel" onchange="selectedLib=this.value;render()" style="width:250px;padding:8px 12px;border-radius:8px;margin:0;background:var(--card);color:var(--text);border:none;">'+
     '<option value="0">'+(lang=='si'?'සියලුම පුස්තකාල (1-5)':'All Libraries (1-5)')+'</option>'+
     '<option value="1">'+(lang=='si'?'පුස්තකාලය 1':'Library 1')+'</option><option value="2">'+(lang=='si'?'පුස්තකාලය 2':'Library 2')+'</option><option value="3">'+(lang=='si'?'පුස්තකාලය 3':'Library 3')+'</option><option value="4">'+(lang=='si'?'පුස්තකාලය 4':'Library 4')+'</option><option value="5">'+(lang=='si'?'පුස්තකාලය 5':'Library 5')+'</option>'+
     '</select></div>';
@@ -172,12 +172,26 @@ V.dash = async function(v){
   }
 
   var s = await api('stats');
-  v.innerHTML = '<div class="tiles">'+
+  v.innerHTML = '<div class="card" style="background: linear-gradient(135deg, var(--ac), #3b82f6); color: #fff; padding: 25px; border-radius: var(--radius); border:none;">'+
+    '<h1><i class="fa-solid fa-gauge-high"></i> '+(lang=='si'?'පරිපාලක උපකරණ පුවරුව':'Admin Dashboard')+'</h1>'+
+    '<p style="opacity:0.9;">'+(lang=='si'?'පද්ධතියේ සියලුම පුස්තකාල සහ ක්‍රියාකාරකම් පහසුවෙන් කළමනාකරණය කරන්න.':'Easily manage all library branches and activities.')+'</p>'+
+  '</div>'+
+
+  '<div class="tiles" style="margin-top: 20px;">'+
     '<div class="tile"><b>'+s.titles+'</b><span>'+(lang=='si'?'පොත් මාතෘකා':'Book Titles')+'</span></div>'+
     '<div class="tile"><b>'+s.copies+'</b><span>'+(lang=='si'?'පොත් පිටපත්':'Book Copies')+'</span></div>'+
     '<div class="tile"><b>'+s.lent+'</b><span>'+(lang=='si'?'ණයට දුන් පොත්':'Lent Books')+'</span></div>'+
     '<div class="tile bad"><b>'+s.overdue+'</b><span>'+(lang=='si'?'පරක්කු වූ පොත්':'Overdue Books')+'</span></div>'+
     '<div class="tile"><b>'+s.members+'</b><span>'+(lang=='si'?'සාමාජිකයන්':'Members')+'</span></div>'+
+  '</div>'+
+
+  '<div class="card" style="margin-top:20px;">'+
+    '<h2><i class="fa-solid fa-bolt" style="color:var(--ac);"></i> '+(lang=='si'?'ක්ෂණික ක්‍රියාමාර්ග (Quick Actions)':'Quick Actions')+'</h2>'+
+    '<div class="row" style="gap:12px; margin-top:15px; display:flex; flex-wrap:wrap;">'+
+      '<button class="btn" onclick="go(\'manage\')"><i class="fa-solid fa-user-plus"></i> '+(lang=='si'?'ලයිබ්‍රේරියන් කෙනෙක් එකතු කරන්න':'Add Librarian')+'</button>'+
+      '<button class="btn" onclick="go(\'audit\')"><i class="fa-solid fa-file-arrow-down"></i> '+(lang=='si'?'විගණන වාර්තා බාගන්න':'Download Audit Reports')+'</button>'+
+      '<button class="btn" onclick="go(\'news\')"><i class="fa-solid fa-bullhorn"></i> '+(lang=='si'?'නිවේදනයක් පළ කරන්න':'Publish Notice')+'</button>'+
+    '</div>'+
   '</div>'+
 
   '<div class="card" style="margin-top:20px;">'+
@@ -645,7 +659,7 @@ async function downloadAudit(status) {
   document.body.removeChild(a);
 }
 
-// 8. NEWS VIEW (Admin Target Audience & Member/Librarian view)
+// 8. NEWS VIEW
 V.news = async function(v){
   var newsList = [];
   try { newsList = await api('get_news'); } catch(e) {}
