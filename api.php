@@ -65,27 +65,6 @@ try {
       }
       out(['ok' => 1, 'book' => $book]);
 
-    case 'download_audit_report':
-      if (!$IS_ADMIN && !$IS_LIB) fail('අවසර නැත');
-      $targetLib = $IS_LIB ? $me['library_id'] : $lib_id;
-      $status = $_GET['status'] ?? 'checked';
-      $libFilter = $targetLib > 0 ? "b.library_id = $targetLib" : "1=1";
-
-      if($status === 'checked') {
-        $sql = "SELECT b.code, b.title, b.author, l.name as lib_name, a.checked_at, u.name as checked_by_name 
-                FROM audit_logs a 
-                JOIN books b ON b.code = a.book_code 
-                LEFT JOIN libraries l ON l.id = b.library_id 
-                LEFT JOIN users u ON u.id = a.checked_by 
-                WHERE $libFilter";
-      } else {
-        $sql = "SELECT b.code, b.title, b.author, l.name as lib_name 
-                FROM books b 
-                LEFT JOIN libraries l ON l.id = b.library_id 
-                WHERE $libFilter AND b.code NOT IN (SELECT book_code FROM audit_logs WHERE library_id = b.library_id)";
-      }
-      out(all_($sql));
-
     case 'get_news':
       if ($IS_LIB) {
         out(all_("SELECT * FROM news WHERE target_audience = 'librarian' OR target_audience = 'all' ORDER BY id DESC"));
@@ -104,10 +83,65 @@ try {
       st('INSERT INTO news(title, content, target_audience, created_at) VALUES(?, ?, ?, ?)', [$title, $content, $audience, date('c')]);
       out(['ok' => 1]);
 
-    case 'delete_news':
-      if (!$IS_ADMIN) fail('අවසර නැත');
-      $id = (int)($in['id'] ?? 0);
-      st('DELETE FROM news WHERE id=?', [$id]);
+    case 'import_books':
+      if (!$IS_ADMIN && !$IS_LIB) fail('අවසර නැත');
+      $items = $in['books'] ?? [];
+      $targetLib = $IS_LIB ? $me['library_id'] : $lib_id;
+      if ($targetLib <= 0) $targetLib = 1;
+
+      $created = [];
+      $last = one("SELECT code FROM books ORDER BY LENGTH(code) DESC, code DESC LIMIT 1");
+      $num = $last ? (int)preg_replace('/\D/', '', $last['code']) : 0;
+
+      $stmt = db()->prepare("INSERT INTO books (code, library_id, title, author) VALUES (?, ?, ?, ?)");
+      foreach ($items as $row) {
+        $title = trim($row['title'] ?? '');
+        $author = trim($row['author'] ?? '');
+        $copies = max(1, (int)($row['copies'] ?? 1));
+        if (!$title) continue;
+
+        for ($i = 0; $i < $copies; $i++) {
+          $num++;
+          $code = 'B' . str_pad($num, 5, '0', STR_PAD_LEFT);
+          $stmt->execute([$code, $targetLib, $title, $author]);
+          $created[] = ['code' => $code, 'title' => $title, 'author' => $author];
+        }
+      }
+      out(['created' => $created]);
+
+    case 'add_single_book':
+      if (!$IS_LIB && !$IS_ADMIN) fail('අවසර නැත');
+      $targetLib = $IS_LIB ? $me['library_id'] : 1;
+      
+      $code = trim($in['code'] ?? '');
+      if(!$code) {
+        $last = one("SELECT code FROM books ORDER BY LENGTH(code) DESC, code DESC LIMIT 1");
+        $num = $last ? (int)preg_replace('/\D/', '', $last['code']) : 0;
+        $num++;
+        $code = 'B' . str_pad($num, 5, '0', STR_PAD_LEFT);
+      }
+
+      $title = trim($in['title'] ?? '');
+      $author = trim($in['author'] ?? '');
+      if(!$title) fail('පොතේ නම අත්‍යවශ්‍යයි!');
+
+      st('INSERT INTO books (code, library_id, title, author) VALUES (?, ?, ?, ?)', [$code, $targetLib, $title, $author]);
+      out(['ok' => 1, 'code' => $code]);
+
+    case 'verify_and_add_librarian':
+      if (!$IS_ADMIN && !$IS_LIB) fail('අවසර නැත');
+      $targetLib = $IS_LIB ? $me['library_id'] : (int)($in['library_id'] ?? ($lib_id > 0 ? $lib_id : 1));
+      $name = trim($in['name'] ?? '');
+      $empNo = trim($in['emp_no'] ?? '');
+      $phone = trim($in['phone'] ?? '');
+      $email = trim($in['email'] ?? '');
+      $password = trim($in['password'] ?? '');
+      
+      if(!$name || !$empNo || !$email || !$password) fail('සියලුම තොරතුරු පුරවන්න!');
+      if(one('SELECT 1 FROM users WHERE username=?', [$empNo])) fail('මෙම සේවක අංකය දැනටමත් පවතී!');
+
+      $hashedPw = password_hash($password, PASSWORD_DEFAULT);
+      st('INSERT INTO users(username, pw, role, library_id, name, phone) VALUES(?, ?, "librarian", ?, ?, ?)', [$empNo, $hashedPw, $targetLib, $name, $phone]);
       out(['ok' => 1]);
 
     case 'stats':
@@ -148,15 +182,12 @@ try {
       $userLibFilter = $targetLib > 0 ? " AND u.library_id = $targetLib" : "";
 
       if ($type === 'books_period') {
-        $data = all_("SELECT b.code, b.title, b.author, l.name as lib_name FROM books b LEFT JOIN libraries l ON l.id=b.library_id WHERE 1=1 $libFilter", []);
-        out($data);
+        out(all_("SELECT b.code, b.title, b.author, l.name as lib_name FROM books b LEFT JOIN libraries l ON l.id=b.library_id WHERE 1=1 $libFilter", []));
       } elseif ($type === 'members_age') {
-        $data = all_("SELECT u.id, u.name, u.username, u.phone, u.nic, u.dob, l.name as lib_name FROM users u LEFT JOIN libraries l ON l.id=u.library_id WHERE u.role='member' $userLibFilter", []);
-        out($data);
+        out(all_("SELECT u.id, u.name, u.username, u.phone, u.dob, l.name as lib_name FROM users u LEFT JOIN libraries l ON l.id=u.library_id WHERE u.role='member' $userLibFilter", []));
       } elseif ($type === 'overdue_loans') {
         $d = date('c');
-        $data = all_("SELECT l.id, l.code, b.title, u.name as member_name, u.phone, l.date_out, l.due, lib.name as lib_name FROM loans l JOIN books b ON b.code=l.code LEFT JOIN libraries lib ON lib.id=b.library_id LEFT JOIN users u ON u.id=l.user_id WHERE l.returned IS NULL AND l.due < '$d' $libFilter", []);
-        out($data);
+        out(all_("SELECT l.id, l.code, b.title, u.name as member_name, u.phone, l.date_out, l.due, lib.name as lib_name FROM loans l JOIN books b ON b.code=l.code LEFT JOIN libraries lib ON lib.id=b.library_id LEFT JOIN users u ON u.id=l.user_id WHERE l.returned IS NULL AND l.due < '$d' $libFilter", []));
       }
       fail('වැරදි වාර්තා වර්ගයකි');
 
@@ -164,7 +195,12 @@ try {
       if (!$IS_LIB) fail('අවසර නැත');
       $b = one('SELECT code, library_id FROM books WHERE code=?', [trim($in['code'] ?? '')]); if (!$b) fail('පොත නැත');
       if ($b['library_id'] != $me['library_id']) fail('මෙම පොත ඔබේ පුස්තකාලයට අයත් නැත');
-      $u = one('SELECT id FROM users WHERE (username=? OR id=?) AND library_id=?', [trim($in['username'] ?? ''), (int)($in['username'] ?? 0), $me['library_id']]); if (!$u) fail('සාමාජිකයා මෙම පුස්තකාලයේ නැත');
+      
+      $memInput = trim($in['username'] ?? '');
+      $cleanMemId = (int)preg_replace('/\D/', '', $memInput);
+      
+      $u = one('SELECT id FROM users WHERE library_id=? AND (id=? OR username=?)', [$me['library_id'], $cleanMemId, $memInput]);
+      if (!$u) fail('සාමාජිකයා මෙම පුස්තකාලයේ නැත');
       
       $activeLoans = (int)db()->query("SELECT COUNT(*) FROM loans WHERE user_id={$u['id']} AND returned IS NULL")->fetchColumn();
       if ($activeLoans >= 2) fail('මෙම සාමාජිකයා දැනටමත් උපරිම පොත් සීමාව (පොත් 2ක්) ලබාගෙන ඇත!');
@@ -187,26 +223,36 @@ try {
             FROM users u LEFT JOIN libraries lib ON lib.id=u.library_id WHERE $w ORDER BY u.id DESC")
       ]);
 
+    case 'add_member':
+      if (!$IS_LIB && !$IS_ADMIN) fail('අවසර නැත');
+      $targetLib = $IS_LIB ? $me['library_id'] : 1;
+      $name = trim($in['name'] ?? '');
+      $username = trim($in['username'] ?? '');
+      $phone = trim($in['phone'] ?? '');
+      $dob = trim($in['dob'] ?? '');
+      $address = trim($in['address'] ?? '');
+      $email = trim($in['email'] ?? '');
+      $password = trim($in['password'] ?? '');
+
+      if(!$name || !$username || !$password) fail('නම, Username සහ මුරපදය අත්‍යවශ්‍යයි!');
+      if(one('SELECT 1 FROM users WHERE username=?', [$username])) fail('මෙම Username එක දැනටමත් භාවිතයේ ඇත!');
+
+      $hashedPw = password_hash($password, PASSWORD_DEFAULT);
+      st('INSERT INTO users(username, pw, role, library_id, name, phone, dob, address) VALUES(?, ?, "member", ?, ?, ?, ?, ?)', 
+         [$username, $hashedPw, $targetLib, $name, $phone, $dob, $address]);
+      out(['ok' => 1]);
+
+    case 'delete_member':
+      if (!$IS_LIB && !$IS_ADMIN) fail('අවසර නැත');
+      $id = (int)($in['id'] ?? 0);
+      st('DELETE FROM users WHERE id=? AND role="member"', [$id]);
+      out(['ok' => 1]);
+
     case 'librarians':
       if (!$IS_ADMIN && !$IS_LIB) fail('අවසර නැත');
       $targetLib = $IS_LIB ? $me['library_id'] : $lib_id;
       $w = "u.role='librarian' " . ($targetLib > 0 ? "AND u.library_id=$targetLib" : "");
       out(all_("SELECT u.*, l.name as lib_name FROM users u LEFT JOIN libraries l ON l.id=u.library_id WHERE $w ORDER BY u.id DESC"));
-
-    case 'add_librarian':
-      if (!$IS_ADMIN && !$IS_LIB) fail('අවසර නැත');
-      $targetLib = $IS_LIB ? $me['library_id'] : (int)($in['library_id'] ?? ($lib_id > 0 ? $lib_id : 1));
-      $name = trim($in['name'] ?? '');
-      $empNo = trim($in['emp_no'] ?? '');
-      $phone = trim($in['phone'] ?? '');
-      $email = trim($in['email'] ?? '');
-      $pw = password_hash(trim($in['password'] ?? 'lib123'), PASSWORD_DEFAULT);
-      
-      if(!$name || !$empNo || !$email) fail('කරුණාකර සියලුම අත්‍යවශ්‍ය තොරතුරු පුරවන්න!');
-      if(one('SELECT 1 FROM users WHERE username=?', [$empNo])) fail('මෙම සේවක අංකය (Employee No) දැනටමත් පවතී!');
-
-      st('INSERT INTO users(username, pw, role, library_id, name, phone) VALUES(?, ?, "librarian", ?, ?, ?)', [$empNo, $pw, $targetLib, $name, $phone]);
-      out(['ok' => 1, 'emp_no' => $empNo]);
 
     case 'delete_librarian':
       if (!$IS_ADMIN && !$IS_LIB) fail('අවසර නැත');
@@ -218,7 +264,7 @@ try {
       if ($IS_MEM) fail('අවසර නැත');
       $targetLib = $IS_LIB ? $me['library_id'] : $lib_id;
       $wL = "l.returned IS NULL" . ($targetLib > 0 ? " AND b.library_id = $targetLib" : "");
-      out(all_("SELECT l.*, b.title, b.author, b.library_id, lib.name as lib_name, u.name, u.username, u.phone, u.username as email FROM loans l JOIN books b ON b.code=l.code LEFT JOIN libraries lib ON lib.id=b.library_id LEFT JOIN users u ON u.id=l.user_id WHERE $wL ORDER BY l.due"));
+      out(all_("SELECT l.*, b.title, b.author, b.library_id, lib.name as lib_name, u.name, u.username, u.phone FROM loans l JOIN books b ON b.code=l.code LEFT JOIN libraries lib ON lib.id=b.library_id LEFT JOIN users u ON u.id=l.user_id WHERE $wL ORDER BY l.due"));
 
     default: fail('unknown');
   }
