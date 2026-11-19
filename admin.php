@@ -46,6 +46,7 @@ if (!$me) { ?>
 <link rel="stylesheet" href="style.css">
 <script>if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}</script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 </head>
 <body>
 <div class="top"><div class="in">
@@ -82,6 +83,22 @@ function toggleLang(){
 var ME = <?= json_encode($me, JSON_UNESCAPED_UNICODE) ?>;
 var IS_ADM = ME.role === 'admin', IS_LIB = ME.role === 'librarian', IS_MEM = ME.role === 'member';
 var selectedLib = 0;
+var LIBRARIES = [];
+
+function getMyLibName() {
+  if (ME.lib_name && String(ME.lib_name).trim() !== '') return String(ME.lib_name);
+  var map = { 1: 'Mainnoluwa', 2: 'Mahena', 3: 'Dedigama', 4: 'Algama' };
+  return map[Number(ME.library_id)] || ('Library #' + (ME.library_id || ''));
+}
+
+function libBanner(){
+  if(!IS_LIB) return '';
+  var myLib = getMyLibName();
+  return '<div class="card" style="padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;border-left:4px solid var(--ac);">'+
+    '<span><i class="fa-solid fa-building-columns" style="color:var(--ac);"></i> <b>'+(lang=='si'?'පුස්තකාලය:':'Library:')+'</b> <span class="tag">'+esc(myLib)+'</span></span>'+
+    '<small class="muted">'+(lang=='si'?'ලයිබ්‍රේරියන්: ':'Librarian: ')+esc(ME.name)+'</small>'+
+  '</div>';
+}
 
 function getTabs(){
   if(IS_ADM) return [
@@ -98,7 +115,7 @@ function getTabs(){
     ['search', '<i class="fa-solid fa-magnifying-glass"></i> ' + (lang=='si'?'පොත් සොයන්න':'Search Books')],
     ['scan', '<i class="fa-solid fa-qrcode"></i> ' + (lang=='si'?'ස්කෑන් / ණයට දීම':'Scan / Issue')],
     ['loans', '<i class="fa-solid fa-book-bookmark"></i> ' + (lang=='si'?'ණයට දුන් පොත්':'Active Loans')],
-    ['members', '<i class="fa-solid fa-users"></i> ' + (lang=='si'?'සාමාජිකයන් සහ ලයිබ්‍රේරියන්':'Members & Librarians')],
+    ['members', '<i class="fa-solid fa-users"></i> ' + (lang=='si'?'සාමාජිකයන්':'Members')],
     ['manage', '<i class="fa-solid fa-sliders"></i> ' + (lang=='si'?'කළමනාකරණය':'Management')],
     ['audit', '<i class="fa-solid fa-clipboard-user"></i> ' + (lang=='si'?'විගණනය (Audit)':'System Audit')],
     ['news', '<i class="fa-solid fa-bullhorn"></i> ' + (lang=='si'?'පුවත්':'News')]
@@ -125,15 +142,25 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','
 function fd(d){try{return d?new Date(d).toLocaleDateString(lang=='si'?'si-LK':'en-US',{year:'numeric',month:'long',day:'numeric'}):''}catch(e){return d||''}}
 function qr(t){var o=qrcode(0,'M');o.addData(t);o.make();return o.createSvgTag({scalable:true,margin:0})}
 
+async function loadLibraries() {
+  try {
+    LIBRARIES = await api('libraries');
+  } catch (e) {
+    LIBRARIES = [];
+  }
+}
+
 function renderLibSelector(){
   if(!IS_ADM) return;
+  var opts = '<option value="0">'+(lang=='si'?'සියලුම පුස්තකාල':'All Libraries')+'</option>' +
+    LIBRARIES.map(l => '<option value="'+l.id+'">'+esc(l.name)+'</option>').join('');
+
   $('libSelectorWrap').innerHTML = '<div class="card" style="margin-bottom:20px;padding:15px 20px;display:flex;align-items:center;gap:15px;background:linear-gradient(135deg, var(--ac), #3b82f6);color:#fff;border:none;box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);">'+
     '<b><i class="fa-solid fa-building-columns"></i> '+(lang=='si'?'පුස්තකාලය තෝරන්න:':'Select Library:')+'</b>'+
-    '<select id="libSel" onchange="selectedLib=this.value;render()" style="width:250px;padding:8px 12px;border-radius:8px;margin:0;background:var(--card);color:var(--text);border:none;font-weight:600;">'+
-    '<option value="0">'+(lang=='si'?'සියලුම පුස්තකාල (1-5)':'All Libraries (1-5)')+'</option>'+
-    '<option value="1">'+(lang=='si'?'පුස්තකාලය 1':'Library 1')+'</option><option value="2">'+(lang=='si'?'පුස්තකාලය 2':'Library 2')+'</option><option value="3">'+(lang=='si'?'පුස්තකාලය 3':'Library 3')+'</option><option value="4">'+(lang=='si'?'පුස්තකාලය 4':'Library 4')+'</option><option value="5">'+(lang=='si'?'පුස්තකාලය 5':'Library 5')+'</option>'+
+    '<select id="libSel" onchange="selectedLib=Number(this.value);render()" style="width:250px;padding:8px 12px;border-radius:8px;margin:0;background:var(--card);color:var(--text);border:none;font-weight:600;">'+
+    opts +
     '</select></div>';
-  if($('libSel')) $('libSel').value = selectedLib;
+  if($('libSel')) $('libSel').value = String(selectedLib);
 }
 
 function nav(){
@@ -141,9 +168,10 @@ function nav(){
   $('nav').innerHTML=TABS.map(t=>'<button class="'+(tab===t[0]?'on':'')+'" onclick="go(\''+t[0]+'\')">'+t[1]+'</button>').join('');
 }
 function go(t){tab=t; render()}
-function render(){
+async function render(){
   $('langLbl').innerText = lang === 'si' ? 'EN' : 'සිං';
-  renderLibSelector(); nav(); var v=$('view'); v.innerHTML=''; V[tab](v);
+  if(IS_ADM) await loadLibraries();
+  renderLibSelector(); nav(); var v=$('view'); v.innerHTML=''; await V[tab](v);
 }
 
 // 1. DASHBOARD
@@ -175,9 +203,19 @@ V.dash = async function(v){
   }
 
   var s = await api('stats');
+  var myLib = getMyLibName();
+  var headerSub = IS_LIB
+    ? ((lang=='si'?'ඔබ දැනට පිවිස සිටින පුස්තකාලය: ':'Current Logged-in Library: ')+'<b>'+esc(myLib)+'</b>')
+    : (lang=='si'?'පද්ධතියේ සියලුම පුස්තකාල සහ ක්‍රියාකාරකම් පහසුවෙන් කළමනාකරණය කරන්න.':'Easily manage all library branches and activities.');
+
   v.innerHTML = '<div class="card" style="background: linear-gradient(135deg, var(--ac), #3b82f6); color: #fff; padding: 25px; border-radius: var(--radius); border:none; box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);">'+
-    '<h1><i class="fa-solid fa-gauge-high"></i> '+(lang=='si'?'පරිපාලක උපකරණ පුවරුව':'Admin Dashboard')+'</h1>'+
-    '<p style="opacity:0.9; margin:0;">'+(lang=='si'?'පද්ධතියේ සියලුම පුස්තකාල සහ ක්‍රියාකාරකම් පහසුවෙන් කළමනාකරණය කරන්න.':'Easily manage all library branches and activities.')+'</p>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
+      '<div>'+
+        '<h1 style="margin:0;"><i class="fa-solid fa-gauge-high"></i> '+(lang=='si'?(IS_LIB?'ලයිබ්‍රේරියන් උපකරණ පුවරුව':'පරිපාලක උපකරණ පුවරුව'):(IS_LIB?'Librarian Dashboard':'Admin Dashboard'))+'</h1>'+
+        '<p style="opacity:0.9; margin:6px 0 0 0;">'+headerSub+'</p>'+
+      '</div>'+
+      (IS_LIB ? '<span class="tag" style="background:rgba(255,255,255,0.2);color:#fff;font-size:14px;padding:8px 14px;border-radius:999px;"><i class="fa-solid fa-building-columns"></i> '+esc(myLib)+'</span>' : '')+
+    '</div>'+
   '</div>'+
 
   '<div class="tiles" style="margin-top: 20px;">'+
@@ -191,16 +229,16 @@ V.dash = async function(v){
   '<div class="card" style="margin-top:20px;">'+
     '<h2><i class="fa-solid fa-bolt" style="color:var(--ac);"></i> '+(lang=='si'?'ක්ෂණික ක්‍රියාමාර්ග (Quick Actions)':'Quick Actions')+'</h2>'+
     '<div class="row" style="gap:12px; margin-top:15px; display:flex; flex-wrap:wrap;">'+
-      '<button class="btn" onclick="go(\'manage\')"><i class="fa-solid fa-user-plus"></i> '+(lang=='si'?'ලයිබ්‍රේරියන් කෙනෙක් එකතු කරන්න':'Add Librarian')+'</button>'+
+      (IS_ADM ? '<button class="btn" onclick="go(\'manage\')"><i class="fa-solid fa-user-plus"></i> '+(lang=='si'?'ලයිබ්‍රේරියන් කෙනෙක් එකතු කරන්න':'Add Librarian')+'</button>' : '<button class="btn" onclick="go(\'manage\')"><i class="fa-solid fa-user-plus"></i> '+(lang=='si'?'සාමාජිකයකු එකතු කරන්න':'Add Member')+'</button>')+
       '<button class="btn" onclick="go(\'audit\')"><i class="fa-solid fa-file-arrow-down"></i> '+(lang=='si'?'විගණන වාර්තා බාගන්න':'Download Audit Reports')+'</button>'+
-      '<button class="btn" onclick="go(\'news\')"><i class="fa-solid fa-bullhorn"></i> '+(lang=='si'?'නිවේදනයක් පළ කරන්න':'Publish Notice')+'</button>'+
+      '<button class="btn" onclick="go(\'news\')"><i class="fa-solid fa-bullhorn"></i> '+(lang=='si'?'නිවේදන බලන්න':'View Notices')+'</button>'+
     '</div>'+
   '</div>'+
 
   '<div class="card" style="margin-top:20px;">'+
     '<h2><i class="fa-solid fa-download"></i> '+(lang=='si'?'විශේෂිත වාර්තා සහ බාගත කිරීම් (Reports & Downloads)':'Special Reports & Downloads')+'</h2>'+
     '<p class="muted">'+(lang=='si'?'අවශ්‍ය කාලසීමාව තෝරා අදාළ වාර්තාව CSV ලෙස බාගන්න.':'Select period and download reports as CSV.')+'</p>'+
-    
+
     '<div class="cols" style="margin:15px 0;">'+
       '<div><label>'+(lang=='si'?'මුල් දිනය (Start Date):':'Start Date:')+'</label><input type="date" id="repStart" value="'+new Date().toISOString().substring(0,8)+'01"></div>'+
       '<div><label>'+(lang=='si'?'අවසන් දිනය (End Date):':'End Date:')+'</label><input type="date" id="repEnd" value="'+new Date().toISOString().substring(0,10)+'"></div>'+
@@ -218,9 +256,9 @@ async function downloadReport(type){
   var start = $('repStart').value;
   var end = $('repEnd').value;
   var data = await api('download_report', {report_type: type, start: start, end: end});
-  
+
   if(!data.length){ alert(lang=='si'?'දත්ත හමු නොවීය!':'No data found!'); return; }
-  
+
   if(type === 'members_age') {
     var today = new Date();
     data = data.map(m => {
@@ -234,7 +272,7 @@ async function downloadReport(type){
   data.forEach(row => {
     csv += keys.map(k => '"'+(row[k]||'')+'"').join(',') + '\n';
   });
-  
+
   var blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
@@ -248,8 +286,8 @@ async function downloadReport(type){
 // 2. SEARCH VIEW
 V.search = function(v){
   var subText = IS_MEM ? '<div class="card" style="background:var(--bg);margin-bottom:15px;"><i class="fa-solid fa-building-columns"></i> '+(lang=='si'?'ඔබ ලියාපදිංචි වී ඇති පුස්තකාලයේ පොත් ලැයිස්තුව':'Books available in your registered library')+'</div>' : '';
-  
-  v.innerHTML = subText + 
+
+  v.innerHTML = libBanner() + subText +
     '<div class="card" style="border: 2px solid var(--ac); box-shadow: 0 4px 15px rgba(79,70,229,0.15);">'+
       '<h3><i class="fa-solid fa-barcode"></i> '+(lang=='si'?'බාර්කොඩ් ස්කෑන් කරන්න හෝ පොතේ නම/කතෘ ලියන්න':'Scan Barcode or Type Book Name/Author')+'</h3>'+
       '<div class="row" style="display:flex;gap:10px;margin-top:10px;">'+
@@ -258,7 +296,7 @@ V.search = function(v){
     '</div>'+
     '<div id="barcodeDetailRes" style="margin-bottom:15px;"></div>'+
     '<div id="res"></div>';
-  
+
   LD={a:'search',p:()=>({q:q}),f:(b,i)=>{
     var a=b.copies-b.lent;
     return '<div class="card" style="transition:all 0.2s;"><div class="item" onclick="tog('+i+')" style="padding:4px 0;"><div><b>'+esc(b.title)+'</b> <span class="tag">'+esc(b.lib_name)+'</span><br><small class="muted">'+esc(b.author)+'</small></div><span class="tag'+(a?'':' out')+'" style="font-size:14px;padding:6px 12px;">'+a+' / '+b.copies+' '+(lang=='si'?'ඇත':'available')+'</span></div>'+
@@ -281,8 +319,6 @@ async function handleSearchInput(val, forceLookup = false) {
       var b = j.book;
       if(b) {
         var o = j.loan;
-        var copiesList = j.all_copies || [];
-        
         detailDiv.innerHTML = '<div class="card" style="background:var(--card); border: 2px solid #22c55e; box-shadow: 0 4px 15px rgba(34,197,94,0.15);">'+
           '<h3><i class="fa-solid fa-circle-check" style="color:#22c55e;"></i> '+(lang=='si'?'ස්කෑන් කළ පොතේ සම්පූර්ණ විස්තර':'Scanned Book Full Details')+'</h3>'+
           '<div class="detail" style="display:flex;gap:20px;align-items:center;margin-top:15px;">'+
@@ -314,7 +350,7 @@ async function tog(i){var b=rows[i];b.c=b.c?null:await api('copies',{title:b.tit
 
 // 3. SCAN / ISSUE VIEW
 V.scan = function(v){
-  v.innerHTML='<div class="card" style="border: 2px solid var(--ac);">'+
+  v.innerHTML = libBanner() + '<div class="card" style="border: 2px solid var(--ac);">'+
     '<h2><i class="fa-solid fa-qrcode"></i> '+(lang=='si'?'පොත් කේතය / නම / කතෘ ස්කෑන් හෝ ටයිප් කරන්න':'Scan or Type Book Code / Name / Author')+'</h2>'+
     '<p class="muted">'+(lang=='si'?'පොත නිකුත් කිරීමට හෝ ආපසු ලබා ගැනීමට Barcode එක ඇතුළත් කරන්න.':'Enter barcode to issue or return book.')+'</p>'+
     '<div class="row" style="display:flex;gap:10px;margin-top:15px;">'+
@@ -336,7 +372,7 @@ async function look(){
             '<p style="margin:0;"><i class="fa-solid fa-building-columns"></i> <b>'+(lang=='si'?'පුස්තකාලය:':'Library:')+'</b> '+esc(b.lib_name)+'</p>'+
             '<p style="margin:0;"><b>'+(lang=='si'?'පොත් කේතය (Code):':'Book Code:')+'</b> '+esc(b.code)+'</p>'+
             '<p style="margin:5px 0 0 0;"><span class="tag'+(o?' out':'')+'">'+(o?(lang=='si'?'ණයට දී ඇත':'Lent Out'):(lang=='si'?'පුස්තකාලයේ ඇත':'Available in Library'))+'</span></p></div></div>';
-    
+
     if(copiesList.length > 1) {
       h += '<h3 style="margin-top:20px;margin-bottom:10px;"><i class="fa-solid fa-copy"></i> '+(lang=='si'?'මෙම පොතේ අනෙකුත් පිටපත් සහ තත්ත්වය:':'Other copies of this book:')+'</h3>'+
            '<div class="cps" style="display:flex;flex-direction:column;gap:8px;">' + copiesList.map(cp => '<div class="cp" style="background:var(--card);padding:8px 12px;border-radius:6px;border:1px solid var(--line);"><span><b>'+esc(cp.code)+'</b></span> ' + (cp.due ? '<span class="tag out">'+(lang=='si'?'ආපසු දිය යුතු: ':'Due: ')+fd(cp.due)+'</span>' : '<span class="tag">'+(lang=='si'?'ඇත':'Available')+'</span>') + '</div>').join('') + '</div>';
@@ -366,26 +402,23 @@ async function returnBook(code){
 V.loans = async function(v){
   var r = await api('loans');
   var today = new Date();
-  var normalLoans = [];
   var fineLoans = [];
 
   r.forEach(l => {
     var dueDate = new Date(l.due);
     var diffTime = today - dueDate;
     var diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
+
     if (diffDays > 0) {
       l.overdue_days = diffDays;
       l.fine_amount = diffDays * 5.00;
       fineLoans.push(l);
-    } else {
-      normalLoans.push(l);
     }
   });
 
-  v.innerHTML = '<div class="card">'+
+  v.innerHTML = libBanner() + '<div class="card">'+
     '<h2><i class="fa-solid fa-book-bookmark"></i> '+(lang=='si'?'ණයට දුන් පොත් කළමනාකරණය':'Lent Books Management')+'</h2>'+
-    
+
     '<div style="display:flex;gap:10px;margin:20px 0;border-bottom:2px solid var(--line);padding-bottom:15px;">'+
       '<button class="btn" id="btnTab1" onclick="switchLoanTab(1)" style="border-radius:8px;"><i class="fa-solid fa-users"></i> '+(lang=='si'?'සාමාජිකයන් ළඟ ඇති පොත් (':'Members Books (') + r.length + ')</button>'+
       '<button class="btn warn" id="btnTab2" onclick="switchLoanTab(2)" style="border-radius:8px;"><i class="fa-solid fa-triangle-exclamation"></i> '+(lang=='si'?'දඩ ගෙවීම් (Fines) (':'Fine Payments (') + fineLoans.length + ')</button>'+
@@ -418,7 +451,7 @@ V.loans = async function(v){
               '<small class="muted" style="display:block;margin-top:5px;">'+(lang=='si'?'ආපසු දිය යුතු දිනය තිබුණේ:':'Original Due Date:')+' '+fd(l.due)+'</small>'+
             '</div>'+
             '<div>'+
-              '<a href="mailto:'+esc(l.email)+'?subject=Library Overdue Notice&body=Dear '+encodeURIComponent(l.name)+', You have a fine of Rs. '+l.fine_amount.toFixed(2)+' for the overdue book: '+encodeURIComponent(l.title)+'" class="btn" style="font-size:12px;padding:8px 14px;text-decoration:none;"><i class="fa-solid fa-envelope"></i> '+(lang=='si'?'ඊමේල් යවන්න':'Send Email')+'</a>'+
+              (l.email ? '<a href="mailto:'+esc(l.email)+'?subject=Library Overdue Notice&body=Dear '+encodeURIComponent(l.name)+', You have a fine of Rs. '+l.fine_amount.toFixed(2)+' for the overdue book: '+encodeURIComponent(l.title)+'" class="btn" style="font-size:12px;padding:8px 14px;text-decoration:none;"><i class="fa-solid fa-envelope"></i> '+(lang=='si'?'ඊමේල් යවන්න':'Send Email')+'</a>' : '<span class="muted">Email N/A</span>')+
             '</div>'+
           '</div>'+
         '</div>'
@@ -440,8 +473,8 @@ function switchLoanTab(tabNo) {
 // 5. MEMBERS & LIBRARIANS VIEW
 V.members = async function(v){
   var mems = await api('members');
-  var libs = await api('librarians');
-  
+  var libs = IS_ADM ? await api('librarians') : [];
+
   var today = new Date();
   var under18 = [];
   var above18 = [];
@@ -452,7 +485,7 @@ V.members = async function(v){
       var age = today.getFullYear() - birthDate.getFullYear();
       var m = today.getMonth() - birthDate.getMonth();
       if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) { age--; }
-      
+
       if(age < 18) {
         u.calc_age = age;
         under18.push(u);
@@ -465,7 +498,7 @@ V.members = async function(v){
     }
   });
 
-  v.innerHTML = '<div class="card">'+
+  var libsSectionHtml = IS_ADM ? '<div class="card">'+
     '<h2><i class="fa-solid fa-user-tie"></i> '+(lang=='si'?'පුස්තකාල ලයිබ්‍රේරියන්වරුන්':'Library Librarians')+'</h2>'+
     (libs.length ? libs.map(l=>
       '<div class="card" style="background:var(--bg);margin-top:12px;border-left:4px solid var(--ac);display:flex;justify-content:space-between;align-items:center;">'+
@@ -475,11 +508,13 @@ V.members = async function(v){
         '</div>'+
       '</div>'
     ).join('') : '<p class="muted">'+(lang=='si'?'ලයිබ්‍රේරියන්වරුන් නොමැත':'No librarians found')+'</p>')+
-  '</div>'+
+  '</div>' : '';
 
-  '<div class="card" style="margin-top:20px;">'+
+  v.innerHTML = libBanner() + libsSectionHtml +
+
+  '<div class="card" style="'+(IS_ADM ? 'margin-top:20px;' : '')+'">'+
     '<h2><i class="fa-solid fa-users"></i> '+(lang=='si'?'සාමාජිකයන් කළමනාකරණය (වයස් කාණ්ඩ අනුව)':'Members Management (By Age)')+'</h2>'+
-    
+
     '<div style="display:flex;gap:10px;margin:20px 0;border-bottom:2px solid var(--line);padding-bottom:15px;">'+
       '<button class="btn" id="btnAge1" onclick="switchAgeTab(1)" style="border-radius:8px;"><i class="fa-solid fa-child"></i> '+(lang=='si'?'වයස 18ට අඩු (':'Under 18 (') + under18.length + ')</button>'+
       '<button class="btn" id="btnAge2" onclick="switchAgeTab(2)" style="border-radius:8px;"><i class="fa-solid fa-user"></i> '+(lang=='si'?'වයස 18ට වැඩි (':'18 and Above (') + above18.length + ')</button>'+
@@ -523,25 +558,91 @@ function switchAgeTab(tabNo) {
   }
 }
 
-// 6. MANAGEMENT VIEW (Excel Upload & Screen OTP Verified Librarian Add)
+// 6. MANAGEMENT VIEW
 V.manage = async function(v){
-  var libs = await api('librarians');
-  
+  var libs = IS_ADM ? await api('librarians') : [];
+
+  var addLibraryHtml = IS_ADM ?
+    '<div class="card" style="border:2px solid var(--ac); box-shadow: 0 4px 15px rgba(79,70,229,0.15); margin-bottom:20px;">'+
+      '<h2><i class="fa-solid fa-building-circle-plus" style="color:var(--ac);"></i> '+(lang=='si'?'නව පුස්තකාලයක් එකතු කරන්න (Add New Library)':'Add New Library')+'</h2>'+
+      '<p class="muted">'+(lang=='si'?'අලුත් පුස්තකාල ශාඛාවක නම ඇතුළත් කර පද්ධතියට එක් කරන්න.':'Enter a new library branch name to add it to the system.')+'</p>'+
+      '<div class="row" style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">'+
+        '<input id="newLibName" placeholder="'+(lang=='si'?'උදා: Kegalle Library':'e.g. Kegalle Library')+'" style="flex:1;min-width:220px;margin:0;">'+
+        '<button class="btn" onclick="addNewLibrary()"><i class="fa-solid fa-plus"></i> '+(lang=='si'?'පුස්තකාලය එකතු කරන්න':'Add Library')+'</button>'+
+      '</div>'+
+    '</div>' : '';
+
   var libSelectHtml = '';
   if (IS_ADM) {
+    var defaultLib = selectedLib > 0 ? selectedLib : (LIBRARIES[0] ? LIBRARIES[0].id : 1);
     libSelectHtml = '<div style="margin-bottom:15px;">'+
       '<label><b>'+(lang=='si'?'අදාළ පුස්තකාලය තෝරන්න (Select Library):':'Select Library for Librarian:')+'</b></label>'+
       '<select id="libIdForAdd" style="margin-top:5px;">'+
-      '<option value="1" '+(selectedLib==1?'selected':'')+'>'+(lang=='si'?'පුස්තකාලය 1':'Library 1')+'</option>'+
-      '<option value="2" '+(selectedLib==2?'selected':'')+'>'+(lang=='si'?'පුස්තකාලය 2':'Library 2')+'</option>'+
-      '<option value="3" '+(selectedLib==3?'selected':'')+'>'+(lang=='si'?'පුස්තකාලය 3':'Library 3')+'</option>'+
-      '<option value="4" '+(selectedLib==4?'selected':'')+'>'+(lang=='si'?'පුස්තකාලය 4':'Library 4')+'</option>'+
-      '<option value="5" '+(selectedLib==5?'selected':'')+'>'+(lang=='si'?'පුස්තකාලය 5':'Library 5')+'</option>'+
+      LIBRARIES.map(l => '<option value="'+l.id+'" '+(defaultLib==l.id?'selected':'')+'>'+esc(l.name)+'</option>').join('')+
       '</select>'+
     '</div>';
   }
 
-  v.innerHTML = '<div class="card" style="border:2px solid var(--success); box-shadow: 0 4px 15px rgba(34,197,94,0.15); margin-bottom:20px;">'+
+  var addMemberHtml = IS_LIB ?
+    '<div class="card" style="border:2px solid var(--ac); box-shadow: 0 4px 15px rgba(79,70,229,0.15); margin-bottom:20px;">'+
+      '<h2><i class="fa-solid fa-user-plus" style="color:var(--ac);"></i> '+(lang=='si'?'නව සාමාජිකයකු ලියාපදිංචි කිරීම (Add New Member)':'Add New Member')+'</h2>'+
+      '<p class="muted">'+(lang=='si'?'ඔබේ පුස්තකාලයට ('+esc(getMyLibName())+') නව සාමාජිකයකු ඇතුළත් කරන්න.':'Register a new member for your library ('+esc(getMyLibName())+').')+'</p>'+
+      '<div class="cols" style="margin-top:15px;">'+
+        '<div><label>'+(lang=='si'?'සාමාජිකයාගේ නම (Full Name):':'Full Name:')+'</label><input id="mngMemName" placeholder="සමීර පෙරේරා"></div>'+
+        '<div><label>'+(lang=='si'?'ලියාපදිංචි අංකය / Username:':'Registration No / Username:')+'</label><input id="mngMemUsername" placeholder="member123"></div>'+
+      '</div>'+
+      '<div class="cols" style="margin-top:10px;">'+
+        '<div><label>'+(lang=='si'?'දුරකථන අංකය (Phone Number):':'Phone Number:')+'</label><input id="mngMemPhone" placeholder="0712345678"></div>'+
+        '<div><label>'+(lang=='si'?'උපන් දිනය (Birthday):':'Birthday:')+'</label><input type="date" id="mngMemDob"></div>'+
+      '</div>'+
+      '<div class="cols" style="margin-top:10px;">'+
+        '<div><label>'+(lang=='si'?'ලිපිනය (Address):':'Address:')+'</label><input id="mngMemAddress" placeholder="කොළඹ Road, ගම්පහ"></div>'+
+        '<div><label>'+(lang=='si'?'ඊමේල් ලිපිනය (Email - Optional):':'Email (Optional):')+'</label><input type="email" id="mngMemEmail" placeholder="member@gmail.com"></div>'+
+      '</div>'+
+      '<div style="margin-top:10px;">'+
+        '<label>'+(lang=='si'?'මුරපදය (Password):':'Password:')+'</label><input type="password" id="mngMemPassword" placeholder="මුරපදයක් දෙන්න">'+
+      '</div>'+
+      '<div style="margin-top:15px;"><button class="btn" onclick="addMemberFromManage()"><i class="fa-solid fa-check"></i> '+(lang=='si'?'සාමාජිකයා Register කරන්න':'Register Member')+'</button></div>'+
+    '</div>' : '';
+
+  var adminLibrarianHtml = IS_ADM ?
+    '<div class="card" style="border:2px solid var(--ac); box-shadow: 0 4px 15px rgba(79,70,229,0.15); margin-bottom:20px;">'+
+      '<h2><i class="fa-solid fa-user-shield" style="color:var(--ac);"></i> '+(lang=='si'?'නව ලයිබ්‍රේරියන්වරයකු එකතු කිරීම (OTP තහවුරු කිරීම)':'Add New Librarian with OTP Verification')+'</h2>'+
+      libSelectHtml +
+      '<div class="cols" style="margin-top:15px;">'+
+        '<div><label>'+(lang=='si'?'සම්පූර්ණ නම:':'Full Name:')+'</label><input id="libName" placeholder="ජයන්ත පෙරේරා"></div>'+
+        '<div><label>'+(lang=='si'?'සේවක අංකය / Reg No:':'Employee / Reg Number:')+'</label><input id="libEmpNo" placeholder="LIB101"></div>'+
+      '</div>'+
+      '<div class="cols" style="margin-top:10px;">'+
+        '<div><label>'+(lang=='si'?'දුරකථන අංකය:':'Phone Number:')+'</label><input id="libPhone" placeholder="0712345678"></div>'+
+        '<div><label>'+(lang=='si'?'ඊමේල් ලිපිනය:':'Email Address:')+'</label><input type="email" id="libEmail" placeholder="librarian@library.com"></div>'+
+      '</div>'+
+      '<div style="margin-top:10px;">'+
+        '<label>'+(lang=='si'?'මුරපදය:':'Password:')+'</label>'+
+        '<input id="libPassword" placeholder="මුරපදයක් ලියන්න">'+
+      '</div>'+
+      '<div id="otpSection" style="margin-top:15px;">'+
+        '<button class="btn" onclick="sendLibrarianOTP()"><i class="fa-solid fa-paper-plane"></i> '+(lang=='si'?'OTP එකක් ජනනය කරන්න':'Generate OTP')+'</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="card">'+
+      '<h2><i class="fa-solid fa-user-tie"></i> '+(lang=='si'?'ලියාපදිංචි ලයිබ්‍රේරියන්වරුන්ගේ ලැයිස්තුව':'Registered Librarians List')+'</h2>'+
+      (libs.length ? libs.map(l=>
+        '<div class="card" style="background:var(--bg);margin-top:12px;display:flex;justify-content:space-between;align-items:center;">'+
+          '<div>'+
+            '<h4 style="margin:0 0 5px 0;">'+esc(l.name)+' <span class="tag">'+esc(l.lib_name)+'</span></h4>'+
+            '<p style="margin:0;color:var(--muted);"><i class="fa-solid fa-id-badge"></i> <b>Reg/Emp No:</b> '+esc(l.username)+' | <i class="fa-solid fa-phone"></i> '+esc(l.phone || 'N/A')+' | <i class="fa-solid fa-envelope"></i> '+esc(l.email || l.username)+'</p>'+
+          '</div>'+
+          '<div>'+
+            '<button class="btn warn" style="padding:6px 14px;font-size:12px;" onclick="deleteLibrarian('+l.id+')"><i class="fa-solid fa-trash"></i> '+(lang=='si'?'ඉවත් කරන්න':'Delete')+'</button>'+
+          '</div>'+
+        '</div>'
+      ).join('') : '<p class="muted">'+(lang=='si'?'ලයිබ්‍රේරියන්වරුන් නොමැත':'No librarians found')+'</p>')+
+    '</div>' : '';
+
+  v.innerHTML = libBanner() + addLibraryHtml + addMemberHtml +
+
+  '<div class="card" style="border:2px solid var(--success); box-shadow: 0 4px 15px rgba(34,197,94,0.15); margin-bottom:20px;">'+
     '<h2><i class="fa-solid fa-file-excel" style="color:var(--success);"></i> '+(lang=='si'?'Excel මඟින් පොත් ඇතුළත් කිරීම සහ Barcode සෑදීම':'Bulk Book Import (Excel) & Auto Barcode')+'</h2>'+
     '<p class="muted">'+(lang=='si'?'Title, Author, Copies යන තීරු (Columns) ඇතුළත් Excel (.xlsx / .csv) ගොනුවක් තෝරන්න.':'Select an Excel (.xlsx / .csv) file with Title, Author, Copies columns.')+'</p>'+
     '<div class="row" style="display:flex;gap:10px;align-items:center;margin-top:15px;flex-wrap:wrap;">'+
@@ -550,46 +651,47 @@ V.manage = async function(v){
       '<button class="btn alt" onclick="downloadSampleExcel()"><i class="fa-solid fa-download"></i> '+(lang=='si'?'Sample Excel ගොනුව':'Sample Excel')+'</button>'+
     '</div>'+
     '<div id="generatedBarcodesBox" style="margin-top:20px;"></div>'+
-  '</div>'+
-
-  '<div class="card" style="border:2px solid var(--ac); box-shadow: 0 4px 15px rgba(79,70,229,0.15); margin-bottom:20px;">'+
-    '<h2><i class="fa-solid fa-user-shield" style="color:var(--ac);"></i> '+(lang=='si'?'නව ලයිබ්‍රේරියන්වරයකු එකතු කිරීම (OTP තහවුරු කිරීම)':'Add New Librarian with OTP Verification')+'</h2>'+
-    
-    libSelectHtml +
-
-    '<div class="cols" style="margin-top:15px;">'+
-      '<div><label>'+(lang=='si'?'සම්පූර්ණ නම:':'Full Name:')+'</label><input id="libName" placeholder="ජයන්ත පෙරේරා"></div>'+
-      '<div><label>'+(lang=='si'?'සේවක අංකය / Reg No:':'Employee / Reg Number:')+'</label><input id="libEmpNo" placeholder="LIB101"></div>'+
-    '</div>'+
-    '<div class="cols" style="margin-top:10px;">'+
-      '<div><label>'+(lang=='si'?'දුරකථන අංකය:':'Phone Number:')+'</label><input id="libPhone" placeholder="0712345678"></div>'+
-      '<div><label>'+(lang=='si'?'ඊමේල් ලිපිනය:':'Email Address:')+'</label><input type="email" id="libEmail" placeholder="librarian@library.com"></div>'+
-    '</div>'+
-    '<div style="margin-top:10px;">'+
-      '<label>'+(lang=='si'?'මුරපදය:':'Password:')+'</label>'+
-      '<input id="libPassword" placeholder="මුරපදයක් ලියන්න">'+
-    '</div>'+
-
-    '<div id="otpSection" style="margin-top:15px;">'+
-      '<button class="btn" onclick="sendLibrarianOTP()"><i class="fa-solid fa-paper-plane"></i> '+(lang=='si'?'OTP එකක් ජනනය කරන්න':'Generate OTP')+'</button>'+
-    '</div>'+
-  '</div>'+
-
-  '<div class="card">'+
-    '<h2><i class="fa-solid fa-user-tie"></i> '+(lang=='si'?'ලියාපදිංචි ලයිබ්‍රේරියන්වරුන්ගේ ලැයිස්තුව':'Registered Librarians List')+'</h2>'+
-    (libs.length ? libs.map(l=>
-      '<div class="card" style="background:var(--bg);margin-top:12px;display:flex;justify-content:space-between;align-items:center;">'+
-        '<div>'+
-          '<h4 style="margin:0 0 5px 0;">'+esc(l.name)+' <span class="tag">'+esc(l.lib_name)+'</span></h4>'+
-          '<p style="margin:0;color:var(--muted);"><i class="fa-solid fa-id-badge"></i> <b>Reg/Emp No:</b> '+esc(l.username)+' | <i class="fa-solid fa-phone"></i> '+esc(l.phone || 'N/A')+' | <i class="fa-solid fa-envelope"></i> '+esc(l.username)+'</p>'+
-        '</div>'+
-        '<div>'+
-          '<button class="btn warn" style="padding:6px 14px;font-size:12px;" onclick="deleteLibrarian('+l.id+')"><i class="fa-solid fa-trash"></i> '+(lang=='si'?'ඉවත් කරන්න':'Delete')+'</button>'+
-        '</div>'+
-      '</div>'
-    ).join('') : '<p class="muted">'+(lang=='si'?'ලයිබ්‍රේරියන්වරුන් නොමැත':'No librarians found')+'</p>')+
-  '</div>';
+  '</div>' + adminLibrarianHtml;
 };
+
+async function addMemberFromManage(){
+  var name = $('mngMemName').value.trim();
+  var username = $('mngMemUsername').value.trim();
+  var phone = $('mngMemPhone').value.trim();
+  var dob = $('mngMemDob').value;
+  var address = $('mngMemAddress').value.trim();
+  var email = $('mngMemEmail').value.trim();
+  var password = $('mngMemPassword').value.trim();
+
+  if(!name || !username || !password){
+    alert(lang=='si'?'කරුණාකර නම, Username සහ මුරපදය අත්‍යවශ්‍යයෙන් පුරවන්න!':'Please fill name, username and password!');
+    return;
+  }
+
+  await api('add_member', {}, {
+    name: name,
+    username: username,
+    phone: phone,
+    dob: dob,
+    address: address,
+    email: email,
+    password: password
+  });
+  alert(lang=='si'?'සාමාජිකයා සාර්ථකව ලියාපදිංචි කරන ලදී!':'Member registered successfully!');
+  render();
+}
+
+async function addNewLibrary(){
+  var name = $('newLibName').value.trim();
+  if(!name){
+    alert(lang=='si'?'කරුණාකර පුස්තකාලයේ නම ඇතුළත් කරන්න!':'Please enter a library name!');
+    return;
+  }
+  var res = await api('add_library', {}, {name: name});
+  selectedLib = Number(res.id);
+  alert(lang=='si'?'නව පුස්තකාලය සාර්ථකව එකතු කරන ලදී: '+res.name:'New library added successfully: '+res.name);
+  await render();
+}
 
 function downloadSampleExcel(){
   var csv = "Title,Author,Copies\nMadol Doova,Martin Wickramasinghe,2\nGamperaliya,Martin Wickramasinghe,3\n";
@@ -603,14 +705,14 @@ function downloadSampleExcel(){
 async function uploadBooksExcel(){
   var fileInput = $('excelFile');
   if(!fileInput.files.length){ alert(lang=='si'?'කරුණාකර Excel ගොනුවක් තෝරන්න!':'Please select an Excel file!'); return; }
-  
+
   var reader = new FileReader();
   reader.onload = async function(e){
     var data = new Uint8Array(e.target.result);
     var workbook = XLSX.read(data, {type: 'array'});
     var sheet = workbook.Sheets[workbook.SheetNames[0]];
     var rows = XLSX.utils.sheet_to_json(sheet);
-    
+
     var books = rows.map(r => ({
       title: r.Title || r.title || r['Book Name'] || '',
       author: r.Author || r.author || '',
@@ -623,14 +725,14 @@ async function uploadBooksExcel(){
     var res = await api('import_books', {lib_id: chosenLibId}, {books: books});
     var created = res.created || [];
 
-    $('generatedBarcodesBox').innerHTML = 
+    $('generatedBarcodesBox').innerHTML =
       '<div style="background:var(--bg);padding:15px;border-radius:10px;border:1px solid var(--line);">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">'+
           '<h3 style="margin:0;color:var(--success);"><i class="fa-solid fa-check-circle"></i> '+(lang=='si'?'පොත් පිටපත් '+created.length+' ක් සඳහා Barcodes සාදන ලදී!':'Generated Barcodes for '+created.length+' copies!')+'</h3>'+
           '<button class="btn" onclick="printBarcodesSheet()"><i class="fa-solid fa-print"></i> '+(lang=='si'?'Barcodes Print / PDF ලෙස ගන්න':'Print / Save PDF')+'</button>'+
         '</div>'+
         '<div id="printableBarcodes" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">'+
-          created.map(b => 
+          created.map(b =>
             '<div style="background:#fff;color:#000;padding:10px;border:1px dashed #999;border-radius:6px;text-align:center;">'+
               '<div style="font-size:12px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(b.title)+'</div>'+
               '<div style="font-size:10px;color:#555;margin-bottom:5px;">'+esc(b.author)+'</div>'+
@@ -697,6 +799,7 @@ async function verifyAndRegisterLibrarian(){
   var chosenLibId = $('libIdForAdd') ? $('libIdForAdd').value : (selectedLib > 0 ? selectedLib : 1);
 
   await api('verify_and_add_librarian', {lib_id: chosenLibId}, {
+    library_id: chosenLibId,
     name: name,
     emp_no: empNo,
     phone: phone,
@@ -719,7 +822,7 @@ async function deleteLibrarian(id){
 // 7. AUDIT VIEW
 V.audit = async function(v){
   if(IS_LIB) {
-    v.innerHTML = '<div class="card" style="border:2px solid var(--ac); box-shadow: 0 4px 15px rgba(79,70,229,0.15);">'+
+    v.innerHTML = libBanner() + '<div class="card" style="border:2px solid var(--ac); box-shadow: 0 4px 15px rgba(79,70,229,0.15);">'+
       '<h2><i class="fa-solid fa-clipboard-check" style="color:var(--ac);"></i> '+(lang=='si'?'පුස්තකාල විගණනය (Library Inventory Audit)':'Library Inventory Audit')+'</h2>'+
       '<p class="muted">'+(lang=='si'?'පොතේ Barcode එක ස්කෑන් කරන්න හෝ ටයිප් කර Enter ඔබන්න (ස්වයංක්‍රීයව Tick වේ).':'Scan or type book barcode and press Enter to tick/audit.')+'</p>'+
       '<div class="row" style="display:flex;gap:10px;margin-top:15px;">'+
@@ -729,11 +832,14 @@ V.audit = async function(v){
       '<div id="auditMsg" style="margin-top:15px;font-weight:bold;"></div>'+
     '</div>';
   } else {
-    var libNameText = selectedLib > 0 ? (lang=='si' ? 'පුස්තකාලය ' + selectedLib : 'Library ' + selectedLib) : (lang=='si' ? 'සියලුම පුස්තකාල (All Libraries)' : 'All Libraries');
-    
+    var curLibObj = LIBRARIES.find(l => Number(l.id) === Number(selectedLib));
+    var libNameText = selectedLib > 0
+      ? (curLibObj ? curLibObj.name : (lang=='si' ? 'පුස්තකාලය ' + selectedLib : 'Library ' + selectedLib))
+      : (lang=='si' ? 'සියලුම පුස්තකාල (All Libraries)' : 'All Libraries');
+
     v.innerHTML = '<div class="card">'+
       '<h2><i class="fa-solid fa-file-arrow-down" style="color:var(--ac);"></i> '+(lang=='si'?'විගණන වාර්තා බාගත කිරීම (Audit Reports Download)':'Audit Reports Download')+'</h2>'+
-      '<p class="muted"><b>'+(lang=='si'?'තෝරාගත් පුස්තකාලය: ':'Selected Library: ')+'</b> <span class="tag" style="background:var(--ac);color:#fff;">'+libNameText+'</span></p>'+
+      '<p class="muted"><b>'+(lang=='si'?'තෝරාගත් පුස්තකාලය: ':'Selected Library: ')+'</b> <span class="tag" style="background:var(--ac);color:#fff;">'+esc(libNameText)+'</span></p>'+
       '<p class="muted">'+(lang=='si'?'ඉහතින් තෝරා ඇති පුස්තකාලයට අදාළව පරීක්ෂා කරන ලද (Checked) සහ පරීක්ෂා නොකළ (Unchecked) පොත් වාර්තා CSV ලෙස බාගන්න.':'Download checked and unchecked books reports for the selected library as CSV.')+'</p>'+
       '<div class="row" style="gap:15px;margin-top:20px;display:flex;flex-wrap:wrap;">'+
         '<button class="btn" onclick="downloadAudit(\'checked\')"><i class="fa-solid fa-file-excel"></i> '+(lang=='si'?'හමු වූ / Tick කළ පොත් වාර්තාව (Checked)':'Checked Books Report')+'</button>'+
@@ -785,7 +891,7 @@ V.news = async function(v){
   var newsList = [];
   try { newsList = await api('get_news'); } catch(e) {}
 
-  var adminAddForm = IS_ADM ? 
+  var adminAddForm = IS_ADM ?
     '<div class="card" style="border:2px solid var(--ac); box-shadow: 0 4px 15px rgba(79,70,229,0.15);">'+
       '<h2><i class="fa-solid fa-pen-to-square" style="color:var(--ac);"></i> '+(lang=='si'?'නව පුවතක් හෝ නිවේදනයක් එක් කරන්න':'Add New Notice/News')+'</h2>'+
       '<div style="margin-top:10px;"><label><b>'+(lang=='si'?'ප්‍රේක්ෂකයන් (Target Audience):':'Target Audience:')+'</b></label>'+
@@ -799,9 +905,9 @@ V.news = async function(v){
       '<div style="margin-top:15px;"><button class="btn" onclick="addNewNews()"><i class="fa-solid fa-bullhorn"></i> '+(lang=='si'?'පුවත ප්‍රකාශයට පත් කරන්න':'Publish News')+'</button></div>'+
     '</div>' : '';
 
-  v.innerHTML = adminAddForm + 
+  v.innerHTML = libBanner() + adminAddForm +
     '<div class="card"><h2><i class="fa-solid fa-bullhorn" style="color:var(--ac);"></i> '+(lang=='si'?'පුවත් සහ නිවේදන':'News & Notices')+'</h2>'+
-    (newsList.length ? newsList.map(n => 
+    (newsList.length ? newsList.map(n =>
       '<div class="card" style="background:var(--bg); margin-top:12px; position:relative; border-left:4px solid '+(n.target_audience==='librarian'?'var(--warn)':'var(--ac)')+';">'+
         '<h3 style="margin:0 0 8px 0;">📢 '+esc(n.title)+' '+(n.target_audience==='librarian'?'<span class="tag out" style="font-size:11px;">Librarians Only</span>':'<span class="tag" style="font-size:11px;">Notice</span>')+'</h3>'+
         '<p style="white-space:pre-wrap; margin:0 0 10px 0; color:var(--text);">'+esc(n.content)+'</p>'+
@@ -817,7 +923,7 @@ async function addNewNews(){
   var content = $('newsContent').value.trim();
   var audience = $('newsAudience').value;
   if(!title || !content) { alert(lang=='si'?'කරුණාකර ශීර්ෂය සහ අන්තර්ගතය පුරවන්න!':'Please fill title and content!'); return; }
-  
+
   await api('add_news', {}, {title: title, content: content, target_audience: audience});
   alert(lang=='si'?'පුවත සාර්ථකව එකතු කරන ලදී!':'News added successfully!');
   render();
