@@ -6,7 +6,7 @@ if (isset($_GET['logout'])) { session_destroy(); header('Location: librarian.php
 $bad = false;
 if (isset($_POST['u'])) {
   $r = one('SELECT id, pw, role FROM users WHERE username=?', [trim($_POST['u'])]);
-  if ($r && password_verify((string)($_POST['p'] ?? ''), $r['pw']) && $r['role'] === 'librarian') {
+  if ($r && password_verify((string)($_POST['p'] ?? ''), $r['pw']) && in_array($r['role'], ['librarian', 'admin'], true)) {
     session_regenerate_id(true);
     $_SESSION['u'] = $r['id'];
     header('Location: librarian.php');
@@ -17,7 +17,7 @@ if (isset($_POST['u'])) {
 
 $me = !empty($_SESSION['u']) ? one('SELECT u.*, l.name as lib_name FROM users u LEFT JOIN libraries l ON l.id=u.library_id WHERE u.id=?', [$_SESSION['u']]) : null;
 
-if (!$me || $me['role'] !== 'librarian') { ?>
+if (!$me || !in_array($me['role'], ['librarian', 'admin'], true)) { ?>
 <!DOCTYPE html>
 <html lang="si">
 <head>
@@ -118,12 +118,12 @@ function getTabs(){
 }
 
 var tab = 'dash';
-var rows=[], total=0, q='', LD=null, V={};
+var rows=[], total=0, q='', LD=null, V={}, NEWS_CACHE=[];
 function $(i){return document.getElementById(i)}
 function g(i){return $(i).value}
 async function api(a,p,b){
-  var r = await fetch('api.php?a='+a+'&'+new URLSearchParams(p||{}), b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{});
-  if(r.status===401){location.reload();throw 0}
+  var r = await fetch('api.php?a='+encodeURIComponent(a)+'&'+new URLSearchParams(p||{}), b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{});
+  if(r.status===401){location.reload();throw new Error('auth');}
   var j = await r.json(); if(j.error){alert(j.error);throw new Error(j.error)} return j;
 }
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
@@ -135,45 +135,65 @@ function nav(){
   $('nav').innerHTML=TABS.map(t=>'<button class="'+(tab===t[0]?'on':'')+'" onclick="go(\''+t[0]+'\')">'+t[1]+'</button>').join('');
 }
 function go(t){tab=t; render()}
-function render(){
+async function render(){
   $('langLbl').innerText = lang === 'si' ? 'EN' : 'සිං';
-  nav(); var v=$('view'); v.innerHTML=''; V[tab](v);
+  nav();
+  var v=$('view');
+  v.innerHTML='<div class="card"><p class="muted">'+(lang=='si'?'පූරණය වෙමින් පවතී...':'Loading...')+'</p></div>';
+  try {
+    await V[tab](v);
+  } catch(err) {
+    console.error('Render error on tab ' + tab + ':', err);
+    v.innerHTML='<div class="card"><p style="color:var(--warn);">Error: '+esc(err.message||err)+'</p></div>';
+  }
+}
+
+function canEditOrDeleteNews(n){
+  if (!ME) return false;
+  if (ME.role === 'admin') return true;
+  if (ME.role === 'librarian') {
+    var isOwnNews = Number(n.created_by) === Number(ME.id);
+    var isLibAuthor = !n.author_role || n.author_role === 'librarian';
+    return isOwnNews && isLibAuthor;
+  }
+  return false;
 }
 
 V.dash = async function(v){
   var s = await api('stats');
   var myLib = getMyLibName();
-  v.innerHTML = '<div class="card" style="background: linear-gradient(135deg, var(--ac), #3b82f6); color: #fff; padding: 25px; border-radius: var(--radius); border:none;">'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
-      '<div>'+
-        '<h1 style="margin:0;"><i class="fa-solid fa-gauge-high"></i> '+(lang=='si'?'ලයිබ්‍රේරියන් උපකරණ පුවරුව':'Librarian Dashboard')+'</h1>'+
-        '<p style="opacity:0.95; margin:6px 0 0 0;">'+(lang=='si'?'ඔබ දැනට පිවිස සිටින පුස්තකාලය: ':'Current Logged-in Library: ')+'<b>'+esc(myLib)+'</b></p>'+
+  v.innerHTML =
+    '<div class="card" style="background: linear-gradient(135deg, var(--ac), #3b82f6); color: #fff; padding: 25px; border-radius: var(--radius); border:none;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
+        '<div>'+
+          '<h1 style="margin:0;"><i class="fa-solid fa-gauge-high"></i> '+(lang=='si'?'ලයිබ්‍රේරියන් උපකරණ පුවරුව':'Librarian Dashboard')+'</h1>'+
+          '<p style="opacity:0.95; margin:6px 0 0 0;">'+(lang=='si'?'ඔබ දැනට පිවිස සිටින පුස්තකාලය: ':'Current Logged-in Library: ')+'<b>'+esc(myLib)+'</b></p>'+
+        '</div>'+
+        '<span class="tag" style="background:rgba(255,255,255,0.2);color:#fff;font-size:14px;padding:8px 14px;border-radius:999px;"><i class="fa-solid fa-building-columns"></i> '+esc(myLib)+'</span>'+
       '</div>'+
-      '<span class="tag" style="background:rgba(255,255,255,0.2);color:#fff;font-size:14px;padding:8px 14px;border-radius:999px;"><i class="fa-solid fa-building-columns"></i> '+esc(myLib)+'</span>'+
     '</div>'+
-  '</div>'+
-  '<div class="tiles" style="margin-top: 20px;">'+
-    '<div class="tile"><b>'+s.titles+'</b><span>'+(lang=='si'?'පොත් මාතෘකා':'Book Titles')+'</span></div>'+
-    '<div class="tile"><b>'+s.copies+'</b><span>'+(lang=='si'?'පොත් පිටපත්':'Book Copies')+'</span></div>'+
-    '<div class="tile"><b>'+s.lent+'</b><span>'+(lang=='si'?'ණයට දුන් පොත්':'Lent Books')+'</span></div>'+
-    '<div class="tile bad"><b>'+s.overdue+'</b><span>'+(lang=='si'?'පරක්කු වූ පොත්':'Overdue Books')+'</span></div>'+
-    '<div class="tile"><b>'+s.members+'</b><span>'+(lang=='si'?'සාමාජිකයන්':'Members')+'</span></div>'+
-  '</div>';
+    '<div class="tiles" style="margin-top: 20px;">'+
+      '<div class="tile"><b>'+s.titles+'</b><span>'+(lang=='si'?'පොත් මාතෘකා':'Book Titles')+'</span></div>'+
+      '<div class="tile"><b>'+s.copies+'</b><span>'+(lang=='si'?'පොත් පිටපත්':'Book Copies')+'</span></div>'+
+      '<div class="tile"><b>'+s.lent+'</b><span>'+(lang=='si'?'ණයට දුන් පොත්':'Lent Books')+'</span></div>'+
+      '<div class="tile bad"><b>'+s.overdue+'</b><span>'+(lang=='si'?'පරක්කු වූ පොත්':'Overdue Books')+'</span></div>'+
+      '<div class="tile"><b>'+s.members+'</b><span>'+(lang=='si'?'සාමාජිකයන්':'Members')+'</span></div>'+
+    '</div>';
 };
 
-V.search = function(v){
+V.search = async function(v){
   v.innerHTML = libBanner() + '<div class="card" style="border: 2px solid var(--ac);"><input class="big" id="q" autofocus placeholder="'+(lang=='si'?'🔍 පොතේ නම, කතෘ හෝ Barcode එක ලියන්න...':'🔍 Type book title, author or barcode...')+'" value="'+esc(q)+'" oninput="q=this.value;load(1)" style="margin:0;"></div><div id="res"></div>';
   LD={a:'search',p:()=>({q:q}),f:(b,i)=>{
     var a=b.copies-b.lent;
     return '<div class="card"><div class="item" onclick="tog('+i+')"><div><b>'+esc(b.title)+'</b> <span class="tag">'+esc(b.lib_name)+'</span><br><small class="muted">'+esc(b.author)+'</small></div><span class="tag'+(a?'':' out')+'">'+a+' / '+b.copies+' '+(lang=='si'?'ඇත':'available')+'</span></div>'+(b.c?'<div class="cps">'+b.c.map(x=>'<div class="cp"><span><b>'+esc(x.code)+'</b> <div style="display:inline-block;background:#fff;padding:2px;margin-left:10px;border-radius:4px;">'+qr(x.code)+'</div></span>'+(x.due?'<span class="tag out">Due '+fd(x.due)+'</span>':'<span class="tag">Available</span>')+'</div>').join('')+'</div>':'')+'</div>';
   }};
-  load(1);
+  await load(1);
 };
 async function load(r){if(r)rows=[];var j=await api(LD.a,Object.assign({off:rows.length},LD.p()));rows=rows.concat(j.rows);total=j.total;paint()}
 function paint(){$('res').innerHTML='<p class="muted" style="margin-bottom:10px;">'+total+' '+(lang=='si'?'ප්‍රතිඵල':'results')+'</p>'+rows.map(LD.f).join('')+(rows.length<total?'<p style="text-align:center;margin-top:20px;"><button class="btn alt" onclick="load()">'+(lang=='si'?'තව පෙන්වන්න':'Load More')+'</button></p>':'')}
 async function tog(i){var b=rows[i];b.c=b.c?null:await api('copies',{title:b.title,author:b.author});paint()}
 
-V.scan = function(v){
+V.scan = async function(v){
   v.innerHTML = libBanner() + '<div class="card" style="border: 2px solid var(--ac);">'+
     '<h2><i class="fa-solid fa-qrcode"></i> '+(lang=='si'?'පොත් කේතය (Barcode) ස්කෑන් හෝ ටයිප් කරන්න':'Scan or Type Book Barcode')+'</h2>'+
     '<p class="muted">'+(lang=='si'?'පොතක් ණයට දීමට, ආපසු භාරගැනීමට හෝ වත්මන් තත්ත්වය බැලීමට Barcode එක ඇතුළත් කරන්න.':'Enter barcode to issue, return or check book status.')+'</p>'+
@@ -646,11 +666,89 @@ async function downloadAudit(status) {
 }
 
 V.news = async function(v){
-  var newsList = []; try { newsList = await api('get_news'); } catch(e) {}
-  v.innerHTML = libBanner() + '<div class="card"><h2>'+(lang=='si'?'පුවත් සහ නිවේදන':'News & Notices')+'</h2>'+
-    (newsList.length ? newsList.map(n=>'<div class="card" style="background:var(--bg);margin-top:10px;"><h3>'+esc(n.title)+'</h3><p>'+esc(n.content)+'</p><small class="muted">'+fd(n.created_at)+'</small></div>').join('') : '<p class="muted">'+(lang=='si'?'නිවේදන නැත':'No news available')+'</p>')+
-  '</div>';
+  var createFormHtml =
+    '<div class="card" style="border:2px solid var(--ac); margin-bottom:20px;">'+
+      '<h2><i class="fa-solid fa-pen-to-square" style="color:var(--ac);"></i> '+(lang=='si'?'නව පුවතක් එක් කරන්න (Add New News)':'Add New News')+'</h2>'+
+      '<div style="margin-top:10px;"><label>'+(lang=='si'?'ශීර්ෂය (Title):':'Title:')+'</label><input id="newsTitle" placeholder="උදා: නව පොත් තොගයක් ලැබී ඇත"></div>'+
+      '<div style="margin-top:10px;"><label>'+(lang=='si'?'අන්තර්ගතය (Content):':'Content:')+'</label><textarea id="newsContent" rows="4" placeholder="පුවතේ විස්තරය මෙහි ලියන්න..."></textarea></div>'+
+      '<div style="margin-top:15px;"><button class="btn" onclick="submitNewNews()"><i class="fa-solid fa-bullhorn"></i> '+(lang=='si'?'පුවත ප්‍රකාශයට පත් කරන්න':'Publish News')+'</button></div>'+
+    '</div>';
+
+  var editBoxHtml = '<div id="newsEditBox" style="display:none;margin-bottom:20px;"></div>';
+
+  v.innerHTML = libBanner() + createFormHtml + editBoxHtml +
+    '<div class="card"><h2><i class="fa-solid fa-bullhorn" style="color:var(--ac);"></i> '+(lang=='si'?'පුවත් සහ නිවේදන':'News & Notices')+'</h2><div id="newsListBox"><p class="muted">'+(lang=='si'?'පුවත් පූරණය වෙමින් පවතී...':'Loading news...')+'</p></div></div>';
+
+  try {
+    var newsList = await api('get_news');
+    NEWS_CACHE = Array.isArray(newsList) ? newsList : [];
+    $('newsListBox').innerHTML = NEWS_CACHE.length ? NEWS_CACHE.map(function(n){
+      var allowEditDel = canEditOrDeleteNews(n);
+      return '<div class="card" style="background:var(--bg);margin-top:12px;border-left:4px solid '+(n.target_audience==='librarian'?'var(--warn)':'var(--ac)')+';">'+
+        '<h3 style="margin:0 0 8px 0;">📢 '+esc(n.title)+' '+(n.target_audience==='librarian'?'<span class="tag out" style="font-size:11px;">Librarians Only</span>':'<span class="tag" style="font-size:11px;">Notice</span>')+'</h3>'+
+        '<p style="white-space:pre-wrap;margin:0 0 10px 0;">'+esc(n.content)+'</p>'+
+        '<small class="muted"><i class="fa-regular fa-clock"></i> '+fd(n.created_at)+(n.author_name?' • '+esc(n.author_name):'')+'</small>'+
+        (allowEditDel ?
+          '<div style="margin-top:12px;display:flex;gap:8px;">'+
+            '<button class="btn alt" style="padding:4px 10px;font-size:12px;" onclick="openEditNews('+n.id+')"><i class="fa-solid fa-pen"></i> '+(lang=='si'?'සංස්කරණය (Edit)':'Edit')+'</button>'+
+            '<button class="btn warn" style="padding:4px 10px;font-size:12px;" onclick="deleteNewsItem('+n.id+')"><i class="fa-solid fa-trash"></i> '+(lang=='si'?'මකන්න (Delete)':'Delete')+'</button>'+
+          '</div>' : '')+
+      '</div>';
+    }).join('') : '<p class="muted">'+(lang=='si'?'නිවේදන නැත':'No news available')+'</p>';
+  } catch(e) {
+    $('newsListBox').innerHTML = '<p class="muted">'+(lang=='si'?'නිවේදන නැත':'No news available')+'</p>';
+  }
 };
+
+async function submitNewNews(){
+  var title = $('newsTitle').value.trim();
+  var content = $('newsContent').value.trim();
+  var audience = (ME && ME.role === 'librarian') ? 'librarian' : 'all';
+  if(!title || !content){
+    alert(lang=='si'?'කරුණාකර ශීර්ෂය සහ අන්තර්ගතය පුරවන්න!':'Please fill title and content!');
+    return;
+  }
+  await api('add_news', {}, {title: title, content: content, target_audience: audience});
+  alert(lang=='si'?'පුවත සාර්ථකව එකතු කරන ලදී!':'News added successfully!');
+  render();
+}
+
+function openEditNews(id){
+  var n = NEWS_CACHE.find(function(x){ return Number(x.id) === Number(id); });
+  if(!n) return;
+  var box = $('newsEditBox');
+  box.style.display = 'block';
+  box.innerHTML =
+    '<div class="card" style="border:2px solid var(--warn);">'+
+      '<h3><i class="fa-solid fa-pen"></i> '+(lang=='si'?'පුවත සංස්කරණය කරන්න':'Edit News')+'</h3>'+
+      '<div style="margin-top:10px;"><label>'+(lang=='si'?'ශීර්ෂය (Title):':'Title:')+'</label><input id="editNewsTitle" value="'+esc(n.title)+'"></div>'+
+      '<div style="margin-top:10px;"><label>'+(lang=='si'?'අන්තර්ගතය (Content):':'Content:')+'</label><textarea id="editNewsContent" rows="4">'+esc(n.content)+'</textarea></div>'+
+      '<div style="margin-top:12px;display:flex;gap:8px;">'+
+        '<button class="btn" onclick="saveEditedNews('+n.id+', \''+esc(n.target_audience || 'librarian')+'\')"><i class="fa-solid fa-check"></i> '+(lang=='si'?'සුරකින්න (Save)':'Save Changes')+'</button>'+
+        '<button class="btn alt" onclick="$(\'newsEditBox\').style.display=\'none\'">'+(lang=='si'?'අවලංගු කරන්න':'Cancel')+'</button>'+
+      '</div>'+
+    '</div>';
+  box.scrollIntoView({behavior:'smooth'});
+}
+
+async function saveEditedNews(id, audience){
+  var title = $('editNewsTitle').value.trim();
+  var content = $('editNewsContent').value.trim();
+  if(!title || !content){
+    alert(lang=='si'?'ශීර්ෂය සහ අන්තර්ගතය අවශ්‍යයි!':'Title and content required!');
+    return;
+  }
+  await api('edit_news', {}, {id: id, title: title, content: content, target_audience: audience || 'librarian'});
+  alert(lang=='si'?'පුවත යාවත්කාලීන කරන ලදී!':'News updated successfully!');
+  render();
+}
+
+async function deleteNewsItem(id){
+  if(confirm(lang=='si'?'මෙම පුවත මකා දැමීමට අවශ්‍ය බව ස්ථිරද?':'Are you sure you want to delete this news?')){
+    await api('delete_news', {}, {id: id});
+    render();
+  }
+}
 
 render();
 </script>

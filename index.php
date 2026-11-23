@@ -891,9 +891,12 @@ V.news = async function(v){
   var newsList = [];
   try { newsList = await api('get_news'); } catch(e) {}
 
-  var adminAddForm = IS_ADM ?
+  var canPostNews = IS_ADM || IS_LIB;
+
+  var addNewsForm = canPostNews ?
     '<div class="card" style="border:2px solid var(--ac); box-shadow: 0 4px 15px rgba(79,70,229,0.15);">'+
       '<h2><i class="fa-solid fa-pen-to-square" style="color:var(--ac);"></i> '+(lang=='si'?'නව පුවතක් හෝ නිවේදනයක් එක් කරන්න':'Add New Notice/News')+'</h2>'+
+      (IS_LIB ? '<p class="muted" style="margin:4px 0 10px 0;"><i class="fa-solid fa-circle-info"></i> '+(lang=='si'?'ඔබ එක් කරන පුවත් පරිපාලක (Admin) වෙත දැනුම් දෙනු ලැබේ.':'News you post will be notified to the Admin.')+'</p>' : '')+
       '<div style="margin-top:10px;"><label><b>'+(lang=='si'?'ප්‍රේක්ෂකයන් (Target Audience):':'Target Audience:')+'</b></label>'+
         '<select id="newsAudience" style="margin-top:5px;">'+
           '<option value="all">'+(lang=='si'?'සියලුම දෙනාට (Members & Librarians - Dashboard Notices)':'All (Members & Librarians)')+'</option>'+
@@ -905,16 +908,24 @@ V.news = async function(v){
       '<div style="margin-top:15px;"><button class="btn" onclick="addNewNews()"><i class="fa-solid fa-bullhorn"></i> '+(lang=='si'?'පුවත ප්‍රකාශයට පත් කරන්න':'Publish News')+'</button></div>'+
     '</div>' : '';
 
-  v.innerHTML = libBanner() + adminAddForm +
+  v.innerHTML = libBanner() + addNewsForm +
     '<div class="card"><h2><i class="fa-solid fa-bullhorn" style="color:var(--ac);"></i> '+(lang=='si'?'පුවත් සහ නිවේදන':'News & Notices')+'</h2>'+
-    (newsList.length ? newsList.map(n =>
-      '<div class="card" style="background:var(--bg); margin-top:12px; position:relative; border-left:4px solid '+(n.target_audience==='librarian'?'var(--warn)':'var(--ac)')+';">'+
-        '<h3 style="margin:0 0 8px 0;">📢 '+esc(n.title)+' '+(n.target_audience==='librarian'?'<span class="tag out" style="font-size:11px;">Librarians Only</span>':'<span class="tag" style="font-size:11px;">Notice</span>')+'</h3>'+
+    (newsList.length ? newsList.map(n => {
+      var isOwn = Number(n.created_by || 0) === Number(ME.id);
+      var canManageThis = IS_ADM || (IS_LIB && isOwn && (!n.author_role || n.author_role === 'librarian'));
+      return '<div class="card" style="background:var(--bg); margin-top:12px; position:relative; border-left:4px solid '+(n.target_audience==='librarian'?'var(--warn)':'var(--ac)')+';">'+
+        '<h3 style="margin:0 0 8px 0;">📢 '+esc(n.title)+' '+
+          (n.target_audience==='librarian'?'<span class="tag out" style="font-size:11px;">Librarians Only</span>':'<span class="tag" style="font-size:11px;">Notice</span>')+
+          (n.author_name ? ' <small class="muted" style="font-weight:normal;">('+(lang=='si'?'එක් කළේ: ':'By: ')+esc(n.author_name)+')</small>' : '')+
+        '</h3>'+
         '<p style="white-space:pre-wrap; margin:0 0 10px 0; color:var(--text);">'+esc(n.content)+'</p>'+
         '<small class="muted"><i class="fa-regular fa-clock"></i> '+fd(n.created_at)+'</small>'+
-        (IS_ADM ? '<div style="margin-top:12px;"><button class="btn warn" style="padding:4px 10px;font-size:12px;" onclick="deleteNews('+n.id+')"><i class="fa-solid fa-trash"></i> '+(lang=='si'?'මකන්න':'Delete')+'</button></div>' : '')+
-      '</div>'
-    ).join('') : '<p class="muted">'+(lang=='si'?'පුවත් සහ නිවේදන නොමැත':'No news or notices available')+'</p>')+
+        (canManageThis ? '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">'+
+          '<button class="btn alt" style="padding:4px 10px;font-size:12px;" onclick="editNewsPrompt('+n.id+', \''+encodeURIComponent(n.title||'')+'\', \''+encodeURIComponent(n.content||'')+'\', \''+esc(n.target_audience||'all')+'\')"><i class="fa-solid fa-pen"></i> '+(lang=='si'?'සංස්කරණය':'Edit')+'</button>'+
+          '<button class="btn warn" style="padding:4px 10px;font-size:12px;" onclick="deleteNews('+n.id+')"><i class="fa-solid fa-trash"></i> '+(lang=='si'?'මකන්න':'Delete')+'</button>'+
+        '</div>' : '')+
+      '</div>';
+    }).join('') : '<p class="muted">'+(lang=='si'?'පුවත් සහ නිවේදන නොමැත':'No news or notices available')+'</p>')+
   '</div>';
 };
 
@@ -926,6 +937,26 @@ async function addNewNews(){
 
   await api('add_news', {}, {title: title, content: content, target_audience: audience});
   alert(lang=='si'?'පුවත සාර්ථකව එකතු කරන ලදී!':'News added successfully!');
+  render();
+}
+
+async function editNewsPrompt(id, encTitle, encContent, audience){
+  var curTitle = decodeURIComponent(encTitle || '');
+  var curContent = decodeURIComponent(encContent || '');
+  var newTitle = prompt(lang=='si'?'නව ශීර්ෂය ඇතුළත් කරන්න:':'Enter new title:', curTitle);
+  if(newTitle === null) return;
+  var newContent = prompt(lang=='si'?'නව අන්තර්ගතය ඇතුළත් කරන්න:':'Enter new content:', curContent);
+  if(newContent === null) return;
+
+  newTitle = newTitle.trim();
+  newContent = newContent.trim();
+  if(!newTitle || !newContent){
+    alert(lang=='si'?'ශීර්ෂය සහ අන්තර්ගතය හිස්ව තැබිය නොහැක!':'Title and content cannot be empty!');
+    return;
+  }
+
+  await api('edit_news', {}, {id: id, title: newTitle, content: newContent, target_audience: audience || 'all'});
+  alert(lang=='si'?'පුවත සාර්ථකව යාවත්කාලීන කරන ලදී!':'News updated successfully!');
   render();
 }
 
