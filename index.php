@@ -1,5 +1,5 @@
 <?php
-require __DIR__ . '/db.php';
+require_once __DIR__ . '/db.php';
 session_start();
 if (isset($_GET['logout'])) { session_destroy(); header('Location: index.php'); exit; }
 $bad = false;
@@ -84,6 +84,7 @@ var ME = <?= json_encode($me, JSON_UNESCAPED_UNICODE) ?>;
 var IS_ADM = ME.role === 'admin', IS_LIB = ME.role === 'librarian', IS_MEM = ME.role === 'member';
 var selectedLib = 0;
 var LIBRARIES = [];
+var NEWS_CACHE = [];
 
 function getMyLibName() {
   if (ME.lib_name && String(ME.lib_name).trim() !== '') return String(ME.lib_name);
@@ -105,6 +106,7 @@ function getTabs(){
     ['dash', '<i class="fa-solid fa-chart-pie"></i> ' + (lang=='si'?'උපකරණ පුවරුව':'Dashboard')],
     ['search', '<i class="fa-solid fa-magnifying-glass"></i> ' + (lang=='si'?'පොත් සොයන්න':'Search Books')],
     ['loans', '<i class="fa-solid fa-book-bookmark"></i> ' + (lang=='si'?'ණයට දුන් පොත්':'Active Loans')],
+    ['fines', '<i class="fa-solid fa-coins"></i> ' + (lang=='si'?'දඩ මුදල් (Fines)':'Fines')],
     ['members', '<i class="fa-solid fa-users"></i> ' + (lang=='si'?'සාමාජිකයන් සහ ලයිබ්‍රේරියන්':'Members & Librarians')],
     ['manage', '<i class="fa-solid fa-sliders"></i> ' + (lang=='si'?'කළමනාකරණය':'Management')],
     ['audit', '<i class="fa-solid fa-clipboard-user"></i> ' + (lang=='si'?'විගණනය (Audit)':'System Audit')],
@@ -174,7 +176,6 @@ async function render(){
   renderLibSelector(); nav(); var v=$('view'); v.innerHTML=''; await V[tab](v);
 }
 
-// 1. DASHBOARD
 V.dash = async function(v){
   if(IS_MEM) {
     var s = await api('stats');
@@ -283,7 +284,6 @@ async function downloadReport(type){
   document.body.removeChild(a);
 }
 
-// 2. SEARCH VIEW
 V.search = function(v){
   var subText = IS_MEM ? '<div class="card" style="background:var(--bg);margin-bottom:15px;"><i class="fa-solid fa-building-columns"></i> '+(lang=='si'?'ඔබ ලියාපදිංචි වී ඇති පුස්තකාලයේ පොත් ලැයිස්තුව':'Books available in your registered library')+'</div>' : '';
 
@@ -348,7 +348,6 @@ async function load(r){if(r)rows=[];var j=await api(LD.a,Object.assign({off:rows
 function paint(){$('res').innerHTML='<p class="muted" style="margin-bottom:10px;"><i class="fa-solid fa-list"></i> '+total+' '+(lang=='si'?'ප්‍රතිඵල':'results')+'</p>'+rows.map(LD.f).join('')+(rows.length<total?'<p style="text-align:center;margin-top:20px;"><button class="btn alt" onclick="load()" style="padding:10px 30px;"><i class="fa-solid fa-arrow-down"></i> '+(lang=='si'?'තව පෙන්වන්න':'Load More')+'</button></p>':'')}
 async function tog(i){var b=rows[i];b.c=b.c?null:await api('copies',{title:b.title,author:b.author});paint()}
 
-// 3. SCAN / ISSUE VIEW
 V.scan = function(v){
   v.innerHTML = libBanner() + '<div class="card" style="border: 2px solid var(--ac);">'+
     '<h2><i class="fa-solid fa-qrcode"></i> '+(lang=='si'?'පොත් කේතය / නම / කතෘ ස්කෑන් හෝ ටයිප් කරන්න':'Scan or Type Book Code / Name / Author')+'</h2>'+
@@ -398,7 +397,6 @@ async function returnBook(code){
   alert(lang=='si'?'පොත සාර්ථකව ආපසු භාරගන්නා ලදී!':'Book successfully returned!'); look();
 }
 
-// 4. LOANS VIEW
 V.loans = async function(v){
   var r = await api('loans');
   var today = new Date();
@@ -409,7 +407,7 @@ V.loans = async function(v){
     var diffTime = today - dueDate;
     var diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays > 0) {
+    if (diffDays > 0 && !Number(l.fine_paid)) {
       l.overdue_days = diffDays;
       l.fine_amount = diffDays * 5.00;
       fineLoans.push(l);
@@ -443,14 +441,15 @@ V.loans = async function(v){
       '<h3 style="margin-bottom:15px;color:var(--warn);"><i class="fa-solid fa-triangle-exclamation"></i> '+(lang=='si'?'දින 14 ඉක්මවූ ප්‍රමාද වූ පොත් සහ දඩ මුදල් (රු. 5.00 / දවසකට)':'Overdue books & Fines (Rs. 5.00 per day)')+'</h3>'+
       (fineLoans.length ? fineLoans.map(l=>
         '<div class="card" style="background:var(--bg);border-left:4px solid var(--warn);margin-top:12px;">'+
-          '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'+
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">'+
             '<div>'+
               '<h4 style="margin:0 0 5px 0;">'+esc(l.title)+' (Code: '+esc(l.code)+')</h4>'+
               '<p style="margin:0 0 5px 0;"><i class="fa-solid fa-user"></i> <b>'+(lang=='si'?'සාමාජිකයා:':'Member:')+'</b> '+esc(l.name)+' | <b>Phone:</b> '+esc(l.phone)+'</p>'+
               '<p style="margin:0;"><span class="tag out">'+(lang=='si'?'ප්‍රමාද වූ දින: ':'Overdue Days: ')+l.overdue_days+'</span> | <b>'+(lang=='si'?'ගෙවිය යුතු දඩ මුදලය:':'Total Fine:')+'</b> <span style="color:var(--warn);font-size:16px;">Rs. '+l.fine_amount.toFixed(2)+'</span></p>'+
               '<small class="muted" style="display:block;margin-top:5px;">'+(lang=='si'?'ආපසු දිය යුතු දිනය තිබුණේ:':'Original Due Date:')+' '+fd(l.due)+'</small>'+
             '</div>'+
-            '<div>'+
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+              '<button class="btn" style="font-size:12px;padding:8px 14px;background:var(--success);border-color:var(--success);" onclick="markFinePaid('+l.id+')"><i class="fa-solid fa-check"></i> '+(lang=='si'?'දඩය ගෙවන ලදී':'Mark Paid')+'</button>'+
               (l.email ? '<a href="mailto:'+esc(l.email)+'?subject=Library Overdue Notice&body=Dear '+encodeURIComponent(l.name)+', You have a fine of Rs. '+l.fine_amount.toFixed(2)+' for the overdue book: '+encodeURIComponent(l.title)+'" class="btn" style="font-size:12px;padding:8px 14px;text-decoration:none;"><i class="fa-solid fa-envelope"></i> '+(lang=='si'?'ඊමේල් යවන්න':'Send Email')+'</a>' : '<span class="muted">Email N/A</span>')+
             '</div>'+
           '</div>'+
@@ -470,7 +469,72 @@ function switchLoanTab(tabNo) {
   }
 }
 
-// 5. MEMBERS & LIBRARIANS VIEW
+function calcFineDetails(dueStr, isPaid){
+  if(isPaid || !dueStr) return { extraDays: 0, fine: 0 };
+  var dueTs = new Date(dueStr).getTime();
+  if(isNaN(dueTs)) return { extraDays: 0, fine: 0 };
+  var diffMs = Date.now() - dueTs;
+  if(diffMs <= 0) return { extraDays: 0, fine: 0 };
+  var extraDays = Math.floor(diffMs / 86400000);
+  if(extraDays < 1) extraDays = 1;
+  return { extraDays: extraDays, fine: extraDays * 5 };
+}
+
+async function markFinePaid(loanId){
+  await api('pay_fine', {}, { loan_id: loanId });
+  alert(lang=='si'?'දඩ මුදල ගෙවූ බව සටහන් කරන ලදී!':'Fine marked as paid!');
+  render();
+}
+
+V.fines = async function(v){
+  var loans = await api('loans');
+  var fineRows = [];
+  var totalFine = 0;
+
+  (Array.isArray(loans) ? loans : []).forEach(function(l){
+    var f = calcFineDetails(l.due, Number(l.fine_paid) === 1);
+    if(f.fine > 0){
+      totalFine += f.fine;
+      fineRows.push({
+        loanId: l.id,
+        memberName: l.name || l.username || ('M' + l.user_id),
+        userId: l.user_id,
+        bookTitle: l.title,
+        bookCode: l.code,
+        libName: l.lib_name || '',
+        extraDays: f.extraDays,
+        fine: f.fine
+      });
+    }
+  });
+
+  v.innerHTML = libBanner() +
+    '<div class="card" style="border:2px solid var(--warn);">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">'+
+        '<div>'+
+          '<h2 style="margin:0 0 4px 0;color:var(--warn);"><i class="fa-solid fa-coins"></i> '+(lang=='si'?'දඩ ගෙවිය යුතු සාමාජිකයන් සහ දඩ මුදල් (Fines)':'Pending Fines')+'</h2>'+
+          '<p class="muted" style="margin:0;">'+(lang=='si'?'දින 14ට වඩා ළඟ තබාගත් පොත් සඳහා දිනකට රු. 5.00 බැගින් ගණනය කර ඇත.':'Calculated at Rs. 5.00 per extra day beyond 14 days.')+'</p>'+
+        '</div>'+
+        '<div style="text-align:right;">'+
+          '<div class="muted" style="font-size:12px;">'+(lang=='si'?'මුළු දඩ මුදල':'Total Fine')+'</div>'+
+          '<div style="font-size:20px;font-weight:800;color:var(--warn);">Rs. '+totalFine.toFixed(2)+'</div>'+
+        '</div>'+
+      '</div>'+
+      (fineRows.length ? fineRows.map(function(item){
+        return '<div class="card" style="background:var(--bg);margin-top:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;border-left:4px solid var(--warn);">'+
+          '<div>'+
+            '<h4 style="margin:0 0 4px 0;"><i class="fa-solid fa-user"></i> '+esc(item.memberName)+' <small class="muted">(ID: M'+esc(item.userId)+')</small>'+(item.libName ? ' <span class="tag">'+esc(item.libName)+'</span>' : '')+'</h4>'+
+            '<small class="muted">'+(lang=='si'?'පොත: ':'Book: ')+esc(item.bookTitle)+' ('+esc(item.bookCode)+') • '+item.extraDays+(lang=='si'?' අමතර දින':' extra days')+'</small>'+
+          '</div>'+
+          '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'+
+            '<span class="tag out" style="font-size:14px;padding:6px 12px;">Rs. '+item.fine.toFixed(2)+'</span>'+
+            '<button class="btn" style="padding:6px 12px;font-size:12px;background:var(--success);border-color:var(--success);" onclick="markFinePaid('+item.loanId+')"><i class="fa-solid fa-check"></i> '+(lang=='si'?'ගෙවන ලදී':'Mark Paid')+'</button>'+
+          '</div>'+
+        '</div>';
+      }).join('') : '<p class="muted" style="margin-top:12px;">'+(lang=='si'?'දැනට දඩ ගෙවිය යුතු සාමාජිකයන් කිසිවෙකු නොමැත.':'No members with pending fines.')+'</p>')+
+    '</div>';
+};
+
 V.members = async function(v){
   var mems = await api('members');
   var libs = IS_ADM ? await api('librarians') : [];
@@ -558,9 +622,9 @@ function switchAgeTab(tabNo) {
   }
 }
 
-// 6. MANAGEMENT VIEW
 V.manage = async function(v){
   var libs = IS_ADM ? await api('librarians') : [];
+  var todayStr = new Date().toISOString().substring(0, 10);
 
   var addLibraryHtml = IS_ADM ?
     '<div class="card" style="border:2px solid var(--ac); box-shadow: 0 4px 15px rgba(79,70,229,0.15); margin-bottom:20px;">'+
@@ -582,6 +646,30 @@ V.manage = async function(v){
       '</select>'+
     '</div>';
   }
+
+  var addSingleBookHtml =
+    '<div class="card" style="border:2px solid var(--ac); margin-bottom:20px;">'+
+      '<h2><i class="fa-solid fa-book-medical" style="color:var(--ac);"></i> '+(lang=='si'?'තනි පොතක් එකතු කිරීම (Add Single Book)':'Add Single Book')+'</h2>'+
+      '<div class="cols" style="margin-top:12px;">'+
+        '<div><label>'+(lang=='si'?'පරිග්‍රහණ අංකය / Barcode (හිස් නම් ස්වයංක්‍රීයව සෑදේ):':'Accession No / Barcode (Auto if blank):')+'</label><input id="admBookCode" placeholder="උදා: B00100"></div>'+
+        '<div><label>'+(lang=='si'?'ලැබුණ දිනය (Received Date):':'Received Date:')+'</label><input type="date" id="admBookDate" value="'+todayStr+'"></div>'+
+      '</div>'+
+      '<div class="cols" style="margin-top:10px;">'+
+        '<div><label>'+(lang=='si'?'පොතේ නම (Book Title):':'Book Title:')+'</label><input id="admBookTitle" placeholder="පොතේ නම"></div>'+
+        '<div><label>'+(lang=='si'?'කතෘ (Author):':'Author:')+'</label><input id="admBookAuthor" placeholder="කතෘගේ නම"></div>'+
+      '</div>'+
+      '<div class="cols" style="margin-top:10px;">'+
+        '<div><label>'+(lang=='si'?'ලැබුණු ආකාරය:':'How Received:')+'</label>'+
+          '<select id="admBookRecType">'+
+            '<option value="purchase">'+(lang=='si'?'මිලදී ගැනීම් (Purchase)':'Purchase')+'</option>'+
+            '<option value="donation">'+(lang=='si'?'පරිත්‍යාග (Donation)':'Donation')+'</option>'+
+          '</select>'+
+        '</div>'+
+        '<div><label>'+(lang=='si'?'විස්තරය (Description):':'Description:')+'</label><input id="admBookRecDesc" placeholder="සැපයුම්කරු / පරිත්‍යාග විස්තරය"></div>'+
+      '</div>'+
+      '<div style="margin-top:14px;"><button class="btn" onclick="addSingleBookAdmin()"><i class="fa-solid fa-plus"></i> '+(lang=='si'?'පොත එකතු කරන්න':'Add Book')+'</button></div>'+
+      '<div id="admSingleBcBox" style="margin-top:12px;"></div>'+
+    '</div>';
 
   var addMemberHtml = IS_LIB ?
     '<div class="card" style="border:2px solid var(--ac); box-shadow: 0 4px 15px rgba(79,70,229,0.15); margin-bottom:20px;">'+
@@ -640,7 +728,7 @@ V.manage = async function(v){
       ).join('') : '<p class="muted">'+(lang=='si'?'ලයිබ්‍රේරියන්වරුන් නොමැත':'No librarians found')+'</p>')+
     '</div>' : '';
 
-  v.innerHTML = libBanner() + addLibraryHtml + addMemberHtml +
+  v.innerHTML = libBanner() + addLibraryHtml + addMemberHtml + addSingleBookHtml +
 
   '<div class="card" style="border:2px solid var(--success); box-shadow: 0 4px 15px rgba(34,197,94,0.15); margin-bottom:20px;">'+
     '<h2><i class="fa-solid fa-file-excel" style="color:var(--success);"></i> '+(lang=='si'?'Excel මඟින් පොත් ඇතුළත් කිරීම සහ Barcode සෑදීම':'Bulk Book Import (Excel) & Auto Barcode')+'</h2>'+
@@ -653,6 +741,35 @@ V.manage = async function(v){
     '<div id="generatedBarcodesBox" style="margin-top:20px;"></div>'+
   '</div>' + adminLibrarianHtml;
 };
+
+async function addSingleBookAdmin(){
+  var title = $('admBookTitle').value.trim();
+  var author = $('admBookAuthor').value.trim();
+  var code = $('admBookCode').value.trim();
+  var date = $('admBookDate').value;
+  var recType = $('admBookRecType').value;
+  var recDesc = $('admBookRecDesc').value.trim();
+  var chosenLibId = $('libIdForAdd') ? $('libIdForAdd').value : (selectedLib > 0 ? selectedLib : 1);
+
+  if(!title){ alert(lang=='si'?'පොතේ නම අත්‍යවශ්‍යයි!':'Book title is required!'); return; }
+
+  var res = await api('add_single_book', {lib_id: chosenLibId}, {
+    library_id: chosenLibId,
+    code: code,
+    title: title,
+    author: author,
+    received_date: date,
+    received_type: recType,
+    received_desc: recDesc
+  });
+
+  $('admSingleBcBox').innerHTML = '<div style="background:var(--bg);padding:14px;border-radius:8px;border:1px dashed var(--line);text-align:center;">'+
+    '<b>'+esc(title)+'</b> ('+esc(res.code)+')<br>'+
+    '<svg id="admSingleSvg" style="margin-top:8px;"></svg>'+
+  '</div>';
+  JsBarcode('#admSingleSvg', res.code, {format: "CODE128", width: 1.8, height: 42});
+  alert(lang=='si'?'පොත සාර්ථකව එකතු කරන ලදී!':'Book added successfully!');
+}
 
 async function addMemberFromManage(){
   var name = $('mngMemName').value.trim();
@@ -819,7 +936,6 @@ async function deleteLibrarian(id){
   }
 }
 
-// 7. AUDIT VIEW
 V.audit = async function(v){
   if(IS_LIB) {
     v.innerHTML = libBanner() + '<div class="card" style="border:2px solid var(--ac); box-shadow: 0 4px 15px rgba(79,70,229,0.15);">'+
@@ -886,17 +1002,14 @@ async function downloadAudit(status) {
   document.body.removeChild(a);
 }
 
-// 8. NEWS VIEW
 V.news = async function(v){
   var newsList = [];
   try { newsList = await api('get_news'); } catch(e) {}
+  NEWS_CACHE = Array.isArray(newsList) ? newsList : [];
 
-  var canPostNews = IS_ADM || IS_LIB;
-
-  var addNewsForm = canPostNews ?
+  var adminAddForm = IS_ADM ?
     '<div class="card" style="border:2px solid var(--ac); box-shadow: 0 4px 15px rgba(79,70,229,0.15);">'+
       '<h2><i class="fa-solid fa-pen-to-square" style="color:var(--ac);"></i> '+(lang=='si'?'නව පුවතක් හෝ නිවේදනයක් එක් කරන්න':'Add New Notice/News')+'</h2>'+
-      (IS_LIB ? '<p class="muted" style="margin:4px 0 10px 0;"><i class="fa-solid fa-circle-info"></i> '+(lang=='si'?'ඔබ එක් කරන පුවත් පරිපාලක (Admin) වෙත දැනුම් දෙනු ලැබේ.':'News you post will be notified to the Admin.')+'</p>' : '')+
       '<div style="margin-top:10px;"><label><b>'+(lang=='si'?'ප්‍රේක්ෂකයන් (Target Audience):':'Target Audience:')+'</b></label>'+
         '<select id="newsAudience" style="margin-top:5px;">'+
           '<option value="all">'+(lang=='si'?'සියලුම දෙනාට (Members & Librarians - Dashboard Notices)':'All (Members & Librarians)')+'</option>'+
@@ -908,26 +1021,45 @@ V.news = async function(v){
       '<div style="margin-top:15px;"><button class="btn" onclick="addNewNews()"><i class="fa-solid fa-bullhorn"></i> '+(lang=='si'?'පුවත ප්‍රකාශයට පත් කරන්න':'Publish News')+'</button></div>'+
     '</div>' : '';
 
-  v.innerHTML = libBanner() + addNewsForm +
+  var editBoxHtml = '<div id="admNewsEditBox" style="display:none;margin-bottom:20px;"></div>';
+
+  v.innerHTML = libBanner() + adminAddForm + editBoxHtml +
     '<div class="card"><h2><i class="fa-solid fa-bullhorn" style="color:var(--ac);"></i> '+(lang=='si'?'පුවත් සහ නිවේදන':'News & Notices')+'</h2>'+
-    (newsList.length ? newsList.map(n => {
-      var isOwn = Number(n.created_by || 0) === Number(ME.id);
-      var canManageThis = IS_ADM || (IS_LIB && isOwn && (!n.author_role || n.author_role === 'librarian'));
-      return '<div class="card" style="background:var(--bg); margin-top:12px; position:relative; border-left:4px solid '+(n.target_audience==='librarian'?'var(--warn)':'var(--ac)')+';">'+
-        '<h3 style="margin:0 0 8px 0;">📢 '+esc(n.title)+' '+
-          (n.target_audience==='librarian'?'<span class="tag out" style="font-size:11px;">Librarians Only</span>':'<span class="tag" style="font-size:11px;">Notice</span>')+
-          (n.author_name ? ' <small class="muted" style="font-weight:normal;">('+(lang=='si'?'එක් කළේ: ':'By: ')+esc(n.author_name)+')</small>' : '')+
-        '</h3>'+
+    (NEWS_CACHE.length ? NEWS_CACHE.map(n =>
+      '<div class="card" style="background:var(--bg); margin-top:12px; position:relative; border-left:4px solid '+(n.target_audience==='librarian'?'var(--warn)':'var(--ac)')+';">'+
+        '<h3 style="margin:0 0 8px 0;">📢 '+esc(n.title)+' '+(n.target_audience==='librarian'?'<span class="tag out" style="font-size:11px;">Librarians Only</span>':'<span class="tag" style="font-size:11px;">Notice</span>')+'</h3>'+
         '<p style="white-space:pre-wrap; margin:0 0 10px 0; color:var(--text);">'+esc(n.content)+'</p>'+
         '<small class="muted"><i class="fa-regular fa-clock"></i> '+fd(n.created_at)+'</small>'+
-        (canManageThis ? '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">'+
-          '<button class="btn alt" style="padding:4px 10px;font-size:12px;" onclick="editNewsPrompt('+n.id+', \''+encodeURIComponent(n.title||'')+'\', \''+encodeURIComponent(n.content||'')+'\', \''+esc(n.target_audience||'all')+'\')"><i class="fa-solid fa-pen"></i> '+(lang=='si'?'සංස්කරණය':'Edit')+'</button>'+
-          '<button class="btn warn" style="padding:4px 10px;font-size:12px;" onclick="deleteNews('+n.id+')"><i class="fa-solid fa-trash"></i> '+(lang=='si'?'මකන්න':'Delete')+'</button>'+
-        '</div>' : '')+
-      '</div>';
-    }).join('') : '<p class="muted">'+(lang=='si'?'පුවත් සහ නිවේදන නොමැත':'No news or notices available')+'</p>')+
+        (IS_ADM ? '<div style="margin-top:12px;display:flex;gap:8px;"><button class="btn alt" style="padding:4px 10px;font-size:12px;" onclick="openAdmEditNews('+n.id+')"><i class="fa-solid fa-pen"></i> '+(lang=='si'?'සංස්කරණය':'Edit')+'</button><button class="btn warn" style="padding:4px 10px;font-size:12px;" onclick="deleteNews('+n.id+')"><i class="fa-solid fa-trash"></i> '+(lang=='si'?'මකන්න':'Delete')+'</button></div>' : '')+
+      '</div>'
+    ).join('') : '<p class="muted">'+(lang=='si'?'පුවත් සහ නිවේදන නොමැත':'No news or notices available')+'</p>')+
   '</div>';
 };
+
+function openAdmEditNews(id){
+  var n = NEWS_CACHE.find(x => Number(x.id) === Number(id));
+  if(!n) return;
+  var box = $('admNewsEditBox');
+  box.style.display = 'block';
+  box.innerHTML = '<div class="card" style="border:2px solid var(--ac);">'+
+    '<h3><i class="fa-solid fa-pen"></i> '+(lang=='si'?'පුවත සංස්කරණය කරන්න':'Edit News')+'</h3>'+
+    '<div style="margin-top:10px;"><label>'+(lang=='si'?'ශීර්ෂය:':'Title:')+'</label><input id="admEditNTitle" value="'+esc(n.title)+'"></div>'+
+    '<div style="margin-top:10px;"><label>'+(lang=='si'?'අන්තර්ගතය:':'Content:')+'</label><textarea id="admEditNContent" rows="4">'+esc(n.content)+'</textarea></div>'+
+    '<div style="margin-top:12px;display:flex;gap:8px;">'+
+      '<button class="btn" onclick="saveAdmEditNews('+n.id+', \''+esc(n.target_audience || 'all')+'\')"><i class="fa-solid fa-check"></i> '+(lang=='si'?'සුරකින්න':'Save')+'</button>'+
+      '<button class="btn alt" onclick="$(\'admNewsEditBox\').style.display=\'none\'">'+(lang=='si'?'අවලංගු කරන්න':'Cancel')+'</button>'+
+    '</div>'+
+  '</div>';
+}
+
+async function saveAdmEditNews(id, aud){
+  var title = $('admEditNTitle').value.trim();
+  var content = $('admEditNContent').value.trim();
+  if(!title || !content){ alert(lang=='si'?'ශීර්ෂය සහ අන්තර්ගතය අවශ්‍යයි!':'Title and content required!'); return; }
+  await api('edit_news', {}, {id: id, title: title, content: content, target_audience: aud});
+  alert(lang=='si'?'පුවත සාර්ථකව යාවත්කාලීන කරන ලදී!':'News updated!');
+  render();
+}
 
 async function addNewNews(){
   var title = $('newsTitle').value.trim();
@@ -937,26 +1069,6 @@ async function addNewNews(){
 
   await api('add_news', {}, {title: title, content: content, target_audience: audience});
   alert(lang=='si'?'පුවත සාර්ථකව එකතු කරන ලදී!':'News added successfully!');
-  render();
-}
-
-async function editNewsPrompt(id, encTitle, encContent, audience){
-  var curTitle = decodeURIComponent(encTitle || '');
-  var curContent = decodeURIComponent(encContent || '');
-  var newTitle = prompt(lang=='si'?'නව ශීර්ෂය ඇතුළත් කරන්න:':'Enter new title:', curTitle);
-  if(newTitle === null) return;
-  var newContent = prompt(lang=='si'?'නව අන්තර්ගතය ඇතුළත් කරන්න:':'Enter new content:', curContent);
-  if(newContent === null) return;
-
-  newTitle = newTitle.trim();
-  newContent = newContent.trim();
-  if(!newTitle || !newContent){
-    alert(lang=='si'?'ශීර්ෂය සහ අන්තර්ගතය හිස්ව තැබිය නොහැක!':'Title and content cannot be empty!');
-    return;
-  }
-
-  await api('edit_news', {}, {id: id, title: newTitle, content: newContent, target_audience: audience || 'all'});
-  alert(lang=='si'?'පුවත සාර්ථකව යාවත්කාලීන කරන ලදී!':'News updated successfully!');
   render();
 }
 

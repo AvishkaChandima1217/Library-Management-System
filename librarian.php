@@ -1,5 +1,5 @@
 <?php
-require __DIR__ . '/db.php';
+require_once __DIR__ . '/db.php';
 session_start();
 if (isset($_GET['logout'])) { session_destroy(); header('Location: librarian.php'); exit; }
 
@@ -45,7 +45,7 @@ if (!$me || !in_array($me['role'], ['librarian', 'admin'], true)) { ?>
 </body></html>
 <?php exit; }
 
-$libFallbackMap = [1 => 'Mainnoluwa', 2 => 'Mahena', 3 => 'Dedigama', 4 => 'Algama'];
+$libFallbackMap = [1 => 'Mainnoluwa', 2 => 'Mahena', 3 => 'Dedigama', 4 => 'Algama', 5 => 'පුස්තකාලය 5'];
 $displayLibName = !empty($me['lib_name']) ? $me['lib_name'] : ($libFallbackMap[(int)($me['library_id'] ?? 0)] ?? ('Library #' . ($me['library_id'] ?? '')));
 ?>
 <!DOCTYPE html>
@@ -92,7 +92,7 @@ var ME = <?= json_encode($me, JSON_UNESCAPED_UNICODE) ?>;
 
 function getMyLibName() {
   if (ME.lib_name && String(ME.lib_name).trim() !== '') return String(ME.lib_name);
-  var map = { 1: 'Mainnoluwa', 2: 'Mahena', 3: 'Dedigama', 4: 'Algama' };
+  var map = { 1: 'Mainnoluwa', 2: 'Mahena', 3: 'Dedigama', 4: 'Algama', 5: 'පුස්තකාලය 5' };
   return map[Number(ME.library_id)] || ('Library #' + (ME.library_id || ''));
 }
 
@@ -104,12 +104,24 @@ function libBanner(){
   '</div>';
 }
 
+function calcFineDetails(dueStr, isPaid){
+  if(isPaid || !dueStr) return { extraDays: 0, fine: 0 };
+  var dueTs = new Date(dueStr).getTime();
+  if(isNaN(dueTs)) return { extraDays: 0, fine: 0 };
+  var diffMs = Date.now() - dueTs;
+  if(diffMs <= 0) return { extraDays: 0, fine: 0 };
+  var extraDays = Math.floor(diffMs / 86400000);
+  if(extraDays < 1) extraDays = 1;
+  return { extraDays: extraDays, fine: extraDays * 5 };
+}
+
 function getTabs(){
   return [
     ['dash', '<i class="fa-solid fa-chart-pie"></i> ' + (lang=='si'?'උපකරණ පුවරුව':'Dashboard')],
     ['search', '<i class="fa-solid fa-magnifying-glass"></i> ' + (lang=='si'?'පොත් සොයන්න':'Search Books')],
     ['scan', '<i class="fa-solid fa-qrcode"></i> ' + (lang=='si'?'ස්කෑන් / ණයට දීම':'Scan / Issue')],
     ['loans', '<i class="fa-solid fa-book-bookmark"></i> ' + (lang=='si'?'ණයට දුන් පොත්':'Active Loans')],
+    ['fines', '<i class="fa-solid fa-coins"></i> ' + (lang=='si'?'දඩ මුදල් (Fines)':'Fines')],
     ['members', '<i class="fa-solid fa-users"></i> ' + (lang=='si'?'සාමාජිකයන්':'Members')],
     ['manage', '<i class="fa-solid fa-sliders"></i> ' + (lang=='si'?'කළමනාකරණය':'Management')],
     ['audit', '<i class="fa-solid fa-clipboard-user"></i> ' + (lang=='si'?'විගණනය (Audit)':'Audit')],
@@ -162,6 +174,9 @@ function canEditOrDeleteNews(n){
 V.dash = async function(v){
   var s = await api('stats');
   var myLib = getMyLibName();
+  var firstOfMonth = new Date().toISOString().substring(0, 8) + '01';
+  var todayStr = new Date().toISOString().substring(0, 10);
+
   v.innerHTML =
     '<div class="card" style="background: linear-gradient(135deg, var(--ac), #3b82f6); color: #fff; padding: 25px; border-radius: var(--radius); border:none;">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
@@ -169,7 +184,7 @@ V.dash = async function(v){
           '<h1 style="margin:0;"><i class="fa-solid fa-gauge-high"></i> '+(lang=='si'?'ලයිබ්‍රේරියන් උපකරණ පුවරුව':'Librarian Dashboard')+'</h1>'+
           '<p style="opacity:0.95; margin:6px 0 0 0;">'+(lang=='si'?'ඔබ දැනට පිවිස සිටින පුස්තකාලය: ':'Current Logged-in Library: ')+'<b>'+esc(myLib)+'</b></p>'+
         '</div>'+
-        '<span class="tag" style="background:rgba(255,255,255,0.2);color:#fff;font-size:14px;padding:8px 14px;border-radius:999px;"><i class="fa-solid fa-building-columns"></i> '+esc(myLib)+'</span>'+
+        '<span class="tag" style="background:rgba(255,255,255,0.2);color:#fff;border-color:rgba(255,255,255,0.35);font-size:14px;padding:8px 14px;border-radius:999px;"><i class="fa-solid fa-building-columns"></i> '+esc(myLib)+'</span>'+
       '</div>'+
     '</div>'+
     '<div class="tiles" style="margin-top: 20px;">'+
@@ -178,8 +193,60 @@ V.dash = async function(v){
       '<div class="tile"><b>'+s.lent+'</b><span>'+(lang=='si'?'ණයට දුන් පොත්':'Lent Books')+'</span></div>'+
       '<div class="tile bad"><b>'+s.overdue+'</b><span>'+(lang=='si'?'පරක්කු වූ පොත්':'Overdue Books')+'</span></div>'+
       '<div class="tile"><b>'+s.members+'</b><span>'+(lang=='si'?'සාමාජිකයන්':'Members')+'</span></div>'+
+    '</div>'+
+    '<div class="card" style="margin-top:20px;border:2px solid var(--ac);">'+
+      '<h2><i class="fa-solid fa-download" style="color:var(--ac);"></i> '+(lang=='si'?'වාර්තා බාගත කිරීම් (Reports & Downloads)':'Reports & Downloads')+'</h2>'+
+      '<p class="muted">'+(lang=='si'?'කාලසීමාව (Start Date - End Date) තෝරා අදාළ වාර්තාව CSV ලෙස බාගන්න.':'Select a date range and download the required CSV report.')+'</p>'+
+      '<div class="cols" style="margin-top:12px;">'+
+        '<div><label>'+(lang=='si'?'මුල් දිනය (Start Date):':'Start Date:')+'</label><input type="date" id="repStart" value="'+firstOfMonth+'"></div>'+
+        '<div><label>'+(lang=='si'?'අවසන් දිනය (End Date):':'End Date:')+'</label><input type="date" id="repEnd" value="'+todayStr+'"></div>'+
+      '</div>'+
+      '<div class="row" style="gap:10px;margin-top:14px;display:flex;flex-wrap:wrap;">'+
+        '<button class="btn" onclick="downloadReport(\'donated_books_period\')"><i class="fa-solid fa-hand-holding-heart"></i> '+(lang=='si'?'පරිත්‍යාග පොත් Download (Donation)':'Download Donated Books')+'</button>'+
+        '<button class="btn alt" onclick="downloadReport(\'books_period\')"><i class="fa-solid fa-book"></i> '+(lang=='si'?'පොත් ලැයිස්තුව Download':'Download Books List')+'</button>'+
+        '<button class="btn alt" onclick="downloadReport(\'members_age\')"><i class="fa-solid fa-users"></i> '+(lang=='si'?'සාමාජික වයස් වාර්තාව':'Members Age Report')+'</button>'+
+        '<button class="btn warn" onclick="downloadReport(\'overdue_loans\')"><i class="fa-solid fa-triangle-exclamation"></i> '+(lang=='si'?'ප්‍රමාද පොත් වාර්තාව':'Overdue Loans Report')+'</button>'+
+      '</div>'+
     '</div>';
 };
+
+async function downloadReport(type){
+  var start = $('repStart') ? $('repStart').value : '';
+  var end = $('repEnd') ? $('repEnd').value : '';
+  var data = await api('download_report', { report_type: type, start: start, end: end });
+
+  if(!Array.isArray(data) || !data.length){
+    alert(lang=='si'?'තෝරාගත් කාලසීමාව තුළ දත්ත හමු නොවීය!':'No data found for the selected date range!');
+    return;
+  }
+
+  if(type === 'members_age'){
+    var today = new Date();
+    data = data.map(function(m){
+      var age = m.dob ? Math.floor((today - new Date(m.dob)) / (365.25 * 24 * 60 * 60 * 1000)) : 'N/A';
+      return Object.assign({}, m, {
+        age: age,
+        age_group: (age !== 'N/A' && age < 18) ? 'Under 18 (18ට අඩු)' : '18 and Above (18ට වැඩි)'
+      });
+    });
+  }
+
+  var keys = Object.keys(data[0]);
+  var csv = keys.join(',') + '\n';
+  data.forEach(function(row){
+    csv += keys.map(function(k){ return '"' + String(row[k] == null ? '' : row[k]).replace(/"/g, '""') + '"'; }).join(',') + '\n';
+  });
+
+  var blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = type + '_' + (start || 'all') + '_to_' + (end || 'all') + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 V.search = async function(v){
   v.innerHTML = libBanner() + '<div class="card" style="border: 2px solid var(--ac);"><input class="big" id="q" autofocus placeholder="'+(lang=='si'?'🔍 පොතේ නම, කතෘ හෝ Barcode එක ලියන්න...':'🔍 Type book title, author or barcode...')+'" value="'+esc(q)+'" oninput="q=this.value;load(1)" style="margin:0;"></div><div id="res"></div>';
@@ -194,34 +261,108 @@ function paint(){$('res').innerHTML='<p class="muted" style="margin-bottom:10px;
 async function tog(i){var b=rows[i];b.c=b.c?null:await api('copies',{title:b.title,author:b.author});paint()}
 
 V.scan = async function(v){
-  v.innerHTML = libBanner() + '<div class="card" style="border: 2px solid var(--ac);">'+
-    '<h2><i class="fa-solid fa-qrcode"></i> '+(lang=='si'?'පොත් කේතය (Barcode) ස්කෑන් හෝ ටයිප් කරන්න':'Scan or Type Book Barcode')+'</h2>'+
-    '<p class="muted">'+(lang=='si'?'පොතක් ණයට දීමට, ආපසු භාරගැනීමට හෝ වත්මන් තත්ත්වය බැලීමට Barcode එක ඇතුළත් කරන්න.':'Enter barcode to issue, return or check book status.')+'</p>'+
-    '<div class="row" style="display:flex;gap:10px;margin-top:15px;">'+
-      '<input class="big" id="sc" autofocus placeholder="උදා: B00001" onkeypress="if(event.key===\'Enter\') look()" style="flex:1;margin:0;">'+
-      '<button class="btn" onclick="look()">'+(lang=='si'?'සොයන්න':'Search')+'</button>'+
-    '</div>'+
-  '</div><div id="det"></div>' +
+  v.innerHTML = libBanner() +
+    '<div class="cols" style="gap:20px;align-items:flex-start;">'+
+      '<div class="card" style="border:2px solid var(--success);box-shadow:0 4px 15px rgba(34,197,94,0.12);margin:0;">'+
+        '<h2 style="margin:0 0 6px 0;color:var(--success);"><i class="fa-solid fa-hand-holding-hand"></i> '+(lang=='si'?'1. පොත් ණයට දීම (Issue Book)':'1. Issue Book')+'</h2>'+
+        '<p class="muted" style="margin:0 0 14px 0;">'+(lang=='si'?'පොතේ Barcode එක ස්කෑන් කරන්න හෝ ටයිප් කර Enter ඔබන්න.':'Scan or type book barcode and press Enter.')+'</p>'+
+        '<div class="row" style="display:flex;gap:10px;">'+
+          '<input class="big" id="scIssue" autofocus placeholder="'+(lang=='si'?'උදා: B00001':'e.g. B00001')+'" onkeypress="if(event.key===\'Enter\') lookIssue()" style="flex:1;margin:0;">'+
+          '<button class="btn" style="background:var(--success);border-color:var(--success);" onclick="lookIssue()"><i class="fa-solid fa-magnifying-glass"></i> '+(lang=='si'?'සොයන්න':'Find')+'</button>'+
+        '</div>'+
+        '<div id="detIssue" style="margin-top:16px;"></div>'+
+      '</div>'+
+
+      '<div class="card" style="border:2px solid var(--warn);box-shadow:0 4px 15px rgba(239,68,68,0.12);margin:0;">'+
+        '<h2 style="margin:0 0 6px 0;color:var(--warn);"><i class="fa-solid fa-rotate-left"></i> '+(lang=='si'?'2. ණයට දුන් පොත් ආපසු ගැනීම (Return Book)':'2. Return Lent Book')+'</h2>'+
+        '<p class="muted" style="margin:0 0 14px 0;">'+(lang=='si'?'ණයට දුන් පොතේ Barcode එක ස්කෑන් කරන්න හෝ ටයිප් කර Enter ඔබන්න.':'Scan or type lent book barcode and press Enter.')+'</p>'+
+        '<div class="row" style="display:flex;gap:10px;">'+
+          '<input class="big" id="scReturn" placeholder="'+(lang=='si'?'උදා: B00001':'e.g. B00001')+'" onkeypress="if(event.key===\'Enter\') lookReturn()" style="flex:1;margin:0;">'+
+          '<button class="btn warn" onclick="lookReturn()"><i class="fa-solid fa-magnifying-glass"></i> '+(lang=='si'?'සොයන්න':'Find')+'</button>'+
+        '</div>'+
+        '<div id="detReturn" style="margin-top:16px;"></div>'+
+      '</div>'+
+    '</div>' +
+
   '<div class="card" style="margin-top:20px;border:2px solid var(--success);">'+
     '<h2><i class="fa-solid fa-user-check" style="color:var(--success);"></i> '+(lang=='si'?'සාමාජිකයාගේ Barcode / ID එක මඟින් විස්තර බැලීම':'Lookup Member by Barcode / ID')+'</h2>'+
     '<p class="muted">'+(lang=='si'?'සාමාජිකයාගේ ID එක (උදා: M1) හෝ Username එක ඇතුළත් කර Enter ඔබන්න:':'Enter member ID (e.g. M1) or username and press Enter:')+'</p>'+
     '<div class="row" style="display:flex;gap:10px;margin-top:10px;">'+
       '<input class="big" id="memberScanInput" placeholder="උදා: M1 හෝ username" onkeypress="if(event.key===\'Enter\') loadMemberDetailsManually()" style="flex:1;margin:0;">'+
-      '<button class="btn" style="background:var(--success);" onclick="loadMemberDetailsManually()">'+(lang=='si'?'විස්තර බලන්න':'View Details')+'</button>'+
+      '<button class="btn" style="background:var(--success);border-color:var(--success);" onclick="loadMemberDetailsManually()">'+(lang=='si'?'විස්තර බලන්න':'View Details')+'</button>'+
     '</div>'+
     '<div id="manualMemberResult" style="margin-top:15px;"></div>'+
   '</div>';
 };
 
-async function look(){
-  var c=g('sc').trim(); if(!c) return; var d=$('det');
-  var j = await api('book',{code:c}), b = j.book;
-  if(!b){d.innerHTML='<div class="card"><p style="color:var(--warn);">'+(lang=='si'?'පොත හමු නොවීය!':'Book not found!')+'</p></div>';return}
-  var o = j.loan;
-  d.innerHTML='<div class="card" style="border-left:4px solid var(--ac);"><h2>'+esc(b.title)+'</h2><div class="qr">'+qr(b.code)+'</div>'+
-    (o ? '<div style="background:var(--bg);padding:10px;border-radius:8px;margin-top:10px;"><p class="tag out" style="margin-bottom:5px;display:inline-block;">'+(lang=='si'?'ණයට දී ඇත':'Lent Out')+'</p><p style="margin:5px 0;"><b>'+(lang=='si'?'සාමාජිකයා:':'Member:')+'</b> '+esc(o.name)+' ('+esc(o.phone)+')</p><p style="margin:0;"><b>'+(lang=='si'?'ආපසු දිය යුතු දිනය:':'Due Date:')+'</b> '+fd(o.due)+'</p></div><button class="btn warn" onclick="returnBook(\''+b.code+'\')" style="margin-top:10px;">'+(lang=='si'?'පොත ආපසු භාරගන්න':'Return Book')+'</button>' :
-         '<p class="tag" style="margin-top:10px;">'+(lang=='si'?'පුස්තකාලයේ ඇත (Available)':'Available')+'</p><div style="margin-top:10px;"><label>'+(lang=='si'?'සාමාජිකයාගේ Username හෝ Member ID:':'Member Username or ID:')+'</label><input id="mu" placeholder="M1 හෝ username"><button class="btn" onclick="lendBook(\''+b.code+'\')" style="margin-top:5px;">'+(lang=='si'?'පොත ණයට දෙන්න':'Lend Book')+'</button></div>')+
-    '</div>';
+async function lookIssue(){
+  var c = g('scIssue').trim();
+  if(!c) return;
+  var d = $('detIssue');
+  try {
+    var j = await api('book', {code: c}), b = j.book;
+    if(!b){
+      d.innerHTML = '<div class="card" style="background:var(--bg);border-left:4px solid var(--warn);margin:0;"><p style="color:var(--warn);margin:0;">'+(lang=='si'?'පොත හමු නොවීය!':'Book not found!')+'</p></div>';
+      return;
+    }
+    var o = j.loan;
+    var h = '<div class="card" style="background:var(--bg);border-top:3px solid var(--success);margin:0;">'+
+      '<h3 style="margin:0 0 6px 0;">'+esc(b.title)+'</h3>'+
+      '<div class="qr">'+qr(b.code)+'</div>'+
+      '<p style="margin:8px 0 0 0;font-size:13px;"><b>'+(lang=='si'?'කේතය:':'Code:')+'</b> '+esc(b.code)+' | <b>'+(lang=='si'?'කතෘ:':'Author:')+'</b> '+esc(b.author)+'</p>';
+
+    if(o){
+      h += '<div style="background:var(--card);padding:10px;border-radius:8px;margin-top:10px;border-left:4px solid var(--warn);">'+
+        '<span class="tag out" style="margin-bottom:5px;display:inline-block;">'+(lang=='si'?'දැනට ණයට දී ඇත':'Lent Out')+'</span>'+
+        '<p style="margin:5px 0;"><b>'+(lang=='si'?'සාමාජිකයා:':'Member:')+'</b> '+esc(o.name)+' ('+esc(o.phone)+')</p>'+
+        '<p style="margin:0;"><b>'+(lang=='si'?'ආපසු දිය යුතු දිනය:':'Due Date:')+'</b> '+fd(o.due)+'</p>'+
+      '</div>';
+    } else {
+      h += '<p class="tag" style="margin-top:10px;">'+(lang=='si'?'පුස්තකාලයේ ඇත (Available)':'Available')+'</p>'+
+        '<div style="margin-top:10px;">'+
+          '<label>'+(lang=='si'?'සාමාජිකයාගේ Username හෝ Member ID:':'Member Username or ID:')+'</label>'+
+          '<input id="mu" placeholder="M1 හෝ username" onkeypress="if(event.key===\'Enter\') lendBook(\''+esc(b.code)+'\')">'+
+          '<button class="btn" onclick="lendBook(\''+esc(b.code)+'\')" style="margin-top:5px;background:var(--success);border-color:var(--success);">'+(lang=='si'?'පොත ණයට දෙන්න':'Lend Book')+'</button>'+
+        '</div>';
+    }
+    d.innerHTML = h + '</div>';
+  } catch(e){
+    d.innerHTML = '<div class="card" style="background:var(--bg);border-left:4px solid var(--warn);margin:0;"><p style="color:var(--warn);margin:0;">'+(lang=='si'?'දෝෂයක් සිදු විය.':'An error occurred.')+'</p></div>';
+  }
+}
+
+async function lookReturn(){
+  var c = g('scReturn').trim();
+  if(!c) return;
+  var d = $('detReturn');
+  try {
+    var j = await api('book', {code: c}), b = j.book;
+    if(!b){
+      d.innerHTML = '<div class="card" style="background:var(--bg);border-left:4px solid var(--warn);margin:0;"><p style="color:var(--warn);margin:0;">'+(lang=='si'?'පොත හමු නොවීය!':'Book not found!')+'</p></div>';
+      return;
+    }
+    var o = j.loan;
+    var h = '<div class="card" style="background:var(--bg);border-top:3px solid var(--warn);margin:0;">'+
+      '<h3 style="margin:0 0 6px 0;">'+esc(b.title)+'</h3>'+
+      '<div class="qr">'+qr(b.code)+'</div>'+
+      '<p style="margin:8px 0 0 0;font-size:13px;"><b>'+(lang=='si'?'කේතය:':'Code:')+'</b> '+esc(b.code)+' | <b>'+(lang=='si'?'කතෘ:':'Author:')+'</b> '+esc(b.author)+'</p>';
+
+    if(o){
+      var f = calcFineDetails(o.due, Number(o.fine_paid) === 1);
+      h += '<div style="background:var(--card);padding:10px;border-radius:8px;margin-top:10px;border-left:4px solid var(--warn);">'+
+        '<span class="tag out" style="margin-bottom:5px;display:inline-block;">'+(lang=='si'?'ණයට දී ඇත':'Lent Out')+'</span>'+
+        '<p style="margin:5px 0;"><b>'+(lang=='si'?'සාමාජිකයා:':'Member:')+'</b> '+esc(o.name)+' ('+esc(o.phone)+')</p>'+
+        '<p style="margin:0;"><b>'+(lang=='si'?'ආපසු දිය යුතු දිනය:':'Due Date:')+'</b> '+fd(o.due)+'</p>'+
+        (f.fine > 0 ? '<p style="margin:6px 0 0 0;color:var(--warn);font-weight:bold;">'+(lang=='si'?'දඩ මුදල (අමතර දින ':'Fine (Extra ')+f.extraDays+(lang=='si'?'): Rs. ':' days): Rs. ')+f.fine.toFixed(2)+'</p>' : (Number(o.fine_paid)===1 ? '<p style="margin:6px 0 0 0;color:var(--success);font-weight:bold;">'+(lang=='si'?'දඩය ගෙවා ඇත':'Fine Paid')+'</p>' : ''))+
+      '</div>'+
+      '<button class="btn warn" onclick="returnBook(\''+esc(b.code)+'\')" style="margin-top:10px;">'+(lang=='si'?'පොත ආපසු භාරගන්න':'Return Book')+'</button>';
+    } else {
+      h += '<p class="tag" style="margin-top:10px;">'+(lang=='si'?'මෙම පොත දැනට ණයට දී නැත':'Book is not currently lent out')+'</p>';
+    }
+    d.innerHTML = h + '</div>';
+  } catch(e){
+    d.innerHTML = '<div class="card" style="background:var(--bg);border-left:4px solid var(--warn);margin:0;"><p style="color:var(--warn);margin:0;">'+(lang=='si'?'දෝෂයක් සිදු විය.':'An error occurred.')+'</p></div>';
+  }
 }
 
 async function lendBook(code){
@@ -229,13 +370,13 @@ async function lendBook(code){
   if(!memInput){ alert(lang=='si'?'කරුණාකර සාමාජිකයාගේ Username හෝ ID එක දෙන්න!':'Please enter member username or ID!'); return; }
   await api('lend',{},{code:code, username:memInput});
   alert(lang=='si'?'පොත සාර්ථකව ණයට දෙන ලදී!':'Book successfully lent!');
-  look();
+  lookIssue();
 }
 
 async function returnBook(code){
   await api('return',{},{code:code});
   alert(lang=='si'?'පොත සාර්ථකව ආපසු භාරගන්නා ලදී!':'Book successfully returned!');
-  look();
+  lookReturn();
 }
 
 async function loadMemberDetailsManually(){
@@ -264,12 +405,14 @@ async function loadMemberDetailsManually(){
       '<h4 style="margin:0 0 10px 0;"><i class="fa-solid fa-book"></i> '+(lang=='si'?'දැනට ණයට ගෙන ඇති පොත්:':'Current Borrowed Books:')+'</h4>';
 
     if(memberLoans.length > 0) {
-      html += memberLoans.map(l =>
-        '<div style="background:var(--card);padding:10px;border-radius:6px;margin-top:8px;border:1px solid var(--line);">'+
+      html += memberLoans.map(l => {
+        var f = calcFineDetails(l.due, Number(l.fine_paid) === 1);
+        return '<div style="background:var(--card);padding:10px;border-radius:6px;margin-top:8px;border:1px solid var(--line);">'+
           '<b>'+(lang=='si'?'පොතේ නම:':'Book:')+'</b> ' + esc(l.title) + ' (Code: ' + esc(l.code) + ')<br>'+
           '<small class="muted">'+(lang=='si'?'ගත්තු දිනය:':'Issued:')+' ' + fd(l.date_out) + ' | <span style="color:var(--warn);font-weight:bold;">'+(lang=='si'?'නැවත ලබාදිය යුතු දිනය:':'Due:')+' ' + fd(l.due) + '</span></small>'+
-        '</div>'
-      ).join('');
+          (f.fine > 0 ? '<div style="margin-top:4px;color:var(--warn);font-weight:bold;font-size:13px;">'+(lang=='si'?'දඩ මුදල: Rs. ':'Fine: Rs. ')+f.fine.toFixed(2)+' ('+f.extraDays+(lang=='si'?' දින':' days')+')</div>' : '')+
+        '</div>';
+      }).join('');
     } else {
       html += '<p class="muted" style="margin:0;">'+(lang=='si'?'මෙම සාමාජිකයා විසින් දැනට පොත් කිසිවක් ණයට ගෙන නැත.':'No active books borrowed by this member.')+'</p>';
     }
@@ -281,24 +424,88 @@ async function loadMemberDetailsManually(){
   }
 }
 
+async function renewLoanItem(loanId){
+  if(!confirm(lang=='si'?'මෙම පොතේ ණය කාලය තවත් දින 14කින් දීර්ඝ කිරීමට අවශ්‍යද?':'Extend this loan by 14 more days?')) return;
+  await api('renew_loan', {}, { loan_id: loanId });
+  alert(lang=='si'?'ණය කාලය සාර්ථකව දීර්ඝ කරන ලදී!':'Loan renewed for 14 days!');
+  render();
+}
+
 V.loans = async function(v){
   var r = await api('loans');
   v.innerHTML = libBanner() + '<div class="card" style="border:2px solid var(--success);">'+
     '<h2><i class="fa-solid fa-book-bookmark" style="color:var(--success);"></i> '+(lang=='si'?'පිටතට පොත් ලබාදී ඇති සාමාජිකයන්ගේ විස්තර (Active Loans)':'Active Loans')+'</h2>'+
     '<p class="muted">'+(lang=='si'?'දැනට පුස්තකාලයෙන් පොත් රැගෙන ගොස් ඇති සාමාජිකයන්ගේ සහ අදාළ පොත්වල විස්තර:':'Members who currently have books borrowed:')+'</p>'+
     (r.length ? r.map(l=>
-      '<div class="card" style="background:var(--bg);margin-top:12px;display:flex;justify-content:space-between;align-items:center;border-left:4px solid var(--ac);">'+
+      '<div class="card" style="background:var(--bg);margin-top:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;border-left:4px solid var(--ac);">'+
         '<div>'+
           '<h4 style="margin:0 0 5px 0;">'+esc(l.title)+' <span class="tag">Code: '+esc(l.code)+'</span></h4>'+
           '<p style="margin:0;color:var(--muted);"><i class="fa-solid fa-user"></i> <b>'+(lang=='si'?'සාමාජිකයා:':'Member:')+'</b> '+esc(l.name)+' (ID: M'+l.user_id+') | <i class="fa-solid fa-phone"></i> <b>'+(lang=='si'?'දුරකථන:':'Phone:')+'</b> '+esc(l.phone)+'</p>'+
           '<small class="muted">'+(lang=='si'?'ගත්තු දිනය:':'Issued:')+' '+fd(l.date_out)+'</small>'+
         '</div>'+
-        '<div style="text-align:right;">'+
+        '<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:8px;">'+
           '<span class="tag out">'+(lang=='si'?'ආපසු දිය යුතු: ':'Due: ')+fd(l.due)+'</span>'+
+          '<button class="btn alt" style="padding:5px 10px;font-size:12px;" onclick="renewLoanItem('+l.id+')"><i class="fa-solid fa-calendar-plus"></i> '+(lang=='si'?'දින 14ක් දීර්ඝ කරන්න':'Renew (+14d)')+'</button>'+
         '</div>'+
       '</div>'
     ).join('') : '<p class="muted">'+(lang=='si'?'දැනට කිසිදු සාමාජිකයෙකු විසින් පිටතට පොත් රැගෙන ගොස් නැත.':'No active loans found.')+'</p>')+
   '</div>';
+};
+
+async function markFinePaidLib(loanId){
+  await api('pay_fine', {}, { loan_id: loanId });
+  alert(lang=='si'?'දඩ මුදල ගෙවූ බව සටහන් කරන ලදී!':'Fine marked as paid!');
+  render();
+}
+
+V.fines = async function(v){
+  var loans = await api('loans');
+  var fineRows = [];
+  var totalFine = 0;
+
+  (Array.isArray(loans) ? loans : []).forEach(function(l){
+    var f = calcFineDetails(l.due, Number(l.fine_paid) === 1);
+    if(f.fine > 0){
+      totalFine += f.fine;
+      fineRows.push({
+        loanId: l.id,
+        memberName: l.name || l.username || ('M' + l.user_id),
+        userId: l.user_id,
+        phone: l.phone || '',
+        bookTitle: l.title,
+        bookCode: l.code,
+        extraDays: f.extraDays,
+        fine: f.fine
+      });
+    }
+  });
+
+  v.innerHTML = libBanner() +
+    '<div class="card" style="border:2px solid var(--warn);">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">'+
+        '<div>'+
+          '<h2 style="margin:0 0 4px 0;color:var(--warn);"><i class="fa-solid fa-coins"></i> '+(lang=='si'?'දඩ ගෙවිය යුතු සාමාජිකයන් සහ දඩ මුදල් (Fines)':'Pending Fines')+'</h2>'+
+          '<p class="muted" style="margin:0;">'+(lang=='si'?'දින 14ට වඩා ළඟ තබාගත් පොත් සඳහා දිනකට රු. 5.00 බැගින් ගණනය කර ඇත.':'Calculated at Rs. 5.00 per extra day beyond 14 days.')+'</p>'+
+        '</div>'+
+        '<div style="text-align:right;">'+
+          '<div class="muted" style="font-size:12px;">'+(lang=='si'?'මුළු දඩ මුදල':'Total Fine')+'</div>'+
+          '<div style="font-size:20px;font-weight:800;color:var(--warn);">Rs. '+totalFine.toFixed(2)+'</div>'+
+        '</div>'+
+      '</div>'+
+
+      (fineRows.length ? fineRows.map(function(item){
+        return '<div class="card" style="background:var(--bg);margin-top:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;border-left:4px solid var(--warn);">'+
+          '<div>'+
+            '<h4 style="margin:0 0 4px 0;"><i class="fa-solid fa-user"></i> '+esc(item.memberName)+' <small class="muted">(ID: M'+esc(item.userId)+')</small></h4>'+
+            '<small class="muted">'+(lang=='si'?'පොත: ':'Book: ')+esc(item.bookTitle)+' ('+esc(item.bookCode)+') • '+item.extraDays+(lang=='si'?' අමතර දින':' extra days')+'</small>'+
+          '</div>'+
+          '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'+
+            '<span class="tag out" style="font-size:14px;padding:6px 12px;">Rs. '+item.fine.toFixed(2)+'</span>'+
+            '<button class="btn" style="padding:6px 12px;font-size:12px;background:var(--success);border-color:var(--success);" onclick="markFinePaidLib('+item.loanId+')"><i class="fa-solid fa-check"></i> '+(lang=='si'?'ගෙවන ලදී':'Mark Paid')+'</button>'+
+          '</div>'+
+        '</div>';
+      }).join('') : '<p class="muted" style="margin-top:12px;">'+(lang=='si'?'දැනට දඩ ගෙවිය යුතු සාමාජිකයන් කිසිවෙකු නොමැත.':'No members with pending fines.')+'</p>')+
+    '</div>';
 };
 
 V.members = async function(v){
@@ -351,17 +558,17 @@ V.members = async function(v){
   '<div class="card">'+
     '<h2><i class="fa-solid fa-users"></i> '+(lang=='si'?'සාමාජිකයන් ලැයිස්තුව (වයස් කාණ්ඩ අනුව ස්වයංක්‍රීයව වෙන් වේ)':'Members List (Categorized by Age)')+'</h2>'+
 
-    '<div style="display:flex;gap:10px;margin:20px 0;border-bottom:2px solid var(--line);padding-bottom:15px;">'+
-      '<button class="btn" id="btnAge1" onclick="switchAgeTab(1)" style="border-radius:8px;background:transparent;"><i class="fa-solid fa-child"></i> '+(lang=='si'?'ළමා - 18ට අඩු (':'Under 18 (')+under18.length+')</button>'+
-      '<button class="btn" id="btnAge2" onclick="switchAgeTab(2)" style="border-radius:8px;background:var(--ac);"><i class="fa-solid fa-user"></i> '+(lang=='si'?'වැඩිහිටි - 18ට වැඩි (':'18 and Above (')+above18.length+')</button>'+
+    '<div style="display:flex;gap:10px;margin:20px 0;border-bottom:2px solid var(--line);padding-bottom:15px;flex-wrap:wrap;">'+
+      '<button class="btn alt" id="btnAge1" onclick="switchAgeTab(1)" style="border-radius:8px;"><i class="fa-solid fa-child"></i> '+(lang=='si'?'ළමා - 18ට අඩු (':'Under 18 (')+under18.length+')</button>'+
+      '<button class="btn" id="btnAge2" onclick="switchAgeTab(2)" style="border-radius:8px;"><i class="fa-solid fa-user"></i> '+(lang=='si'?'වැඩිහිටි - 18ට වැඩි (':'18 and Above (')+above18.length+')</button>'+
     '</div>'+
 
     '<div id="ageTab1Content" style="display:none;">'+
       '<h3 style="margin-bottom:15px;color:var(--success);"><i class="fa-solid fa-child"></i> '+(lang=='si'?'වයස අවුරුදු 18ට අඩු සාමාජිකයන් (ළමා)':'Members Under 18')+'</h3>'+
       (under18.length ? under18.map(u=>
-        '<div class="card" style="background:var(--bg);margin-top:12px;display:flex;justify-content:space-between;align-items:center;border-left:4px solid var(--success);">'+
+        '<div class="card" style="background:var(--bg);margin-top:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;border-left:4px solid var(--success);">'+
           '<div>'+
-            '<h4 style="margin:0 0 5px 0;">'+esc(u.name)+' (ID: M'+u.id+') <span class="tag">'+(lang=='si'?'වයස: ':'Age: ')+u.calc_age+'</span> <span class="tag" style="background:var(--success);color:#fff;font-size:11px;">Under 18</span></h4>'+
+            '<h4 style="margin:0 0 5px 0;">'+esc(u.name)+' (ID: M'+u.id+') <span class="tag">'+(lang=='si'?'වයස: ':'Age: ')+u.calc_age+'</span> <span class="tag" style="background:var(--success);color:#fff;border-color:var(--success);font-size:11px;">Under 18</span></h4>'+
             '<p style="margin:0;color:var(--muted);"><i class="fa-solid fa-phone"></i> '+esc(u.phone)+' | <b>DOB:</b> '+esc(u.dob)+' | <i class="fa-solid fa-location-dot"></i> '+esc(u.address || 'N/A')+'</p>'+
           '</div>'+
           '<div>'+
@@ -374,7 +581,7 @@ V.members = async function(v){
     '<div id="ageTab2Content">'+
       '<h3 style="margin-bottom:15px;color:var(--ac);"><i class="fa-solid fa-user"></i> '+(lang=='si'?'වයස අවුරුදු 18ට වැඩි සාමාජිකයන් (වැඩිහිටි)':'Members 18 and Above')+'</h3>'+
       (above18.length ? above18.map(u=>
-        '<div class="card" style="background:var(--bg);margin-top:12px;display:flex;justify-content:space-between;align-items:center;border-left:4px solid var(--ac);">'+
+        '<div class="card" style="background:var(--bg);margin-top:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;border-left:4px solid var(--ac);">'+
           '<div>'+
             '<h4 style="margin:0 0 5px 0;">'+esc(u.name)+' (ID: M'+u.id+') '+ (u.calc_age !== 'N/A' ? '<span class="tag">'+(lang=='si'?'වයස: ':'Age: ')+u.calc_age+'</span>' : '') +' <span class="tag out" style="font-size:11px;">18+</span></h4>'+
             '<p style="margin:0;color:var(--muted);"><i class="fa-solid fa-phone"></i> '+esc(u.phone)+' | <b>DOB:</b> '+esc(u.dob || 'N/A')+' | <i class="fa-solid fa-location-dot"></i> '+esc(u.address || 'N/A')+'</p>'+
@@ -389,16 +596,17 @@ V.members = async function(v){
 };
 
 function switchAgeTab(tabNo) {
+  var b1 = $('btnAge1'), b2 = $('btnAge2');
   if(tabNo === 1) {
     $('ageTab1Content').style.display = 'block';
     $('ageTab2Content').style.display = 'none';
-    $('btnAge1').style.background = 'var(--ac)';
-    $('btnAge2').style.background = 'transparent';
+    if(b1){ b1.className = 'btn'; }
+    if(b2){ b2.className = 'btn alt'; }
   } else {
     $('ageTab1Content').style.display = 'none';
     $('ageTab2Content').style.display = 'block';
-    $('btnAge1').style.background = 'transparent';
-    $('btnAge2').style.background = 'var(--ac)';
+    if(b1){ b1.className = 'btn alt'; }
+    if(b2){ b2.className = 'btn'; }
   }
 }
 
@@ -440,6 +648,7 @@ async function deleteMember(id){
 }
 
 V.manage = async function(v){
+  var todayStr = new Date().toISOString().substring(0, 10);
   v.innerHTML = libBanner() + '<div class="card" style="border:2px solid var(--ac); margin-bottom:20px;">'+
     '<h2><i class="fa-solid fa-user-plus" style="color:var(--ac);"></i> '+(lang=='si'?'නව සාමාජිකයකු ලියාපදිංචි කිරීම (Add New Member)':'Add New Member')+'</h2>'+
     '<p class="muted">'+(lang=='si'?'ඔබේ පුස්තකාලයට ('+esc(getMyLibName())+') නව සාමාජිකයකු ඇතුළත් කරන්න.':'Register a new member for your library ('+esc(getMyLibName())+').')+'</p>'+
@@ -466,7 +675,7 @@ V.manage = async function(v){
     '<p class="muted">'+(lang=='si'?'පොත සඳහා විස්තර ඇතුළත් කර Barcode සමඟ පද්ධතියට එක් කරන්න.':'Add a book with details and generate barcode.')+'</p>'+
     '<div class="cols" style="margin-top:15px;">'+
       '<div><label>'+(lang=='si'?'පරිග්‍රහණ අංකය / Barcode (හිස් නම් ස්වයංක්‍රීයව සෑදේ):':'Accession No / Barcode (Auto if blank):')+'</label><input id="sCode" placeholder="උදා: B00100"></div>'+
-      '<div><label>'+(lang=='si'?'ලැබුණ දිනය (Received Date):':'Received Date:')+'</label><input type="date" id="sDate"></div>'+
+      '<div><label>'+(lang=='si'?'ලැබුණ දිනය (Received Date):':'Received Date:')+'</label><input type="date" id="sDate" value="'+todayStr+'"></div>'+
     '</div>'+
     '<div class="cols" style="margin-top:10px;">'+
       '<div><label>'+(lang=='si'?'පොතේ නම (Book Name):':'Book Name:')+'</label><input id="sTitle" placeholder="පොතේ නම"></div>'+
@@ -482,7 +691,18 @@ V.manage = async function(v){
     '</div>'+
     '<div class="cols" style="margin-top:10px;">'+
       '<div><label>'+(lang=='si'?'මිල (Price):':'Price:')+'</label><input type="number" step="0.01" id="sPrice" placeholder="500.00"></div>'+
-      '<div><label>'+(lang=='si'?'ලැබුණු ආකාරය (Source / How Received):':'Source:')+'</label><input id="sSource" placeholder="මිලදී ගැනීමක් / පරිත්‍යාගයක්"></div>'+
+      '<div>'+
+        '<label><i class="fa-solid fa-hand-holding-heart"></i> '+(lang=='si'?'ලැබුණු ආකාරය (How Received):':'How Received:')+'</label>'+
+        '<select id="sReceivedType" onchange="onReceivedTypeChange()">'+
+          '<option value="">-- '+(lang=='si'?'තෝරන්න':'Select')+' --</option>'+
+          '<option value="purchase">'+(lang=='si'?'මිලදී ගැනීම් (Purchase)':'Purchase (මිලදී ගැනීම්)')+'</option>'+
+          '<option value="donation">'+(lang=='si'?'පරිත්‍යාග (Donation)':'Donation (පරිත්‍යාග)')+'</option>'+
+        '</select>'+
+      '</div>'+
+    '</div>'+
+    '<div id="sReceivedDescWrap" style="display:none;margin-top:10px;">'+
+      '<label id="sReceivedDescLabel"><i class="fa-solid fa-file-lines"></i> '+(lang=='si'?'විස්තරය (Description):':'Description:')+'</label>'+
+      '<input id="sReceivedDesc" placeholder="'+(lang=='si'?'කෙටි විස්තරයක් ලියන්න...':'Enter a short description...')+'">'+
     '</div>'+
     '<div style="margin-top:15px;"><button class="btn" onclick="addSingleBook()"><i class="fa-solid fa-check"></i> '+(lang=='si'?'තනි පොත එකතු කර Barcode සාදන්න':'Add Book & Generate Barcode')+'</button></div>'+
     '<div id="singleBookBarcodeBox" style="margin-top:15px;"></div>'+
@@ -491,11 +711,33 @@ V.manage = async function(v){
   '<div class="card" style="border:2px solid var(--success);">'+
     '<h2><i class="fa-solid fa-file-excel"></i> '+(lang=='si'?'Excel මඟින් පොත් බල්ක් (Bulk) ඇතුළත් කිරීම':'Bulk Book Import (Excel)')+'</h2>'+
     '<p class="muted">'+(lang=='si'?'Excel ගොනුවක් මඟින් එකවර පොත් රැසක් ඇතුළත් කර Barcode සෑදිය හැක.':'Import multiple books from Excel and generate barcodes.')+'</p>'+
-    '<input type="file" id="excelFile" accept=".xlsx,.xls,.csv" style="margin:15px 0;background:var(--card);">'+
-    '<button class="btn" style="background:var(--success);" onclick="uploadBooksExcel()"><i class="fa-solid fa-upload"></i> '+(lang=='si'?'Upload කර Barcodes සාදන්න':'Upload & Generate Barcodes')+'</button>'+
+    '<input type="file" id="excelFile" accept=".xlsx,.xls,.csv" style="margin:15px 0;background:var(--bg);">'+
+    '<button class="btn" style="background:var(--success);border-color:var(--success);" onclick="uploadBooksExcel()"><i class="fa-solid fa-upload"></i> '+(lang=='si'?'Upload කර Barcodes සාදන්න':'Upload & Generate Barcodes')+'</button>'+
     '<div id="generatedBarcodesBox" style="margin-top:20px;"></div>'+
   '</div>';
 };
+
+function onReceivedTypeChange(){
+  var sel = $('sReceivedType');
+  var wrap = $('sReceivedDescWrap');
+  var lbl = $('sReceivedDescLabel');
+  var inp = $('sReceivedDesc');
+  if(!sel || !wrap || !lbl || !inp) return;
+
+  var val = sel.value;
+  if(val === 'purchase'){
+    wrap.style.display = 'block';
+    lbl.innerHTML = '<i class="fa-solid fa-cart-shopping"></i> ' + (lang=='si'?'මිලදී ගැනීම පිළිබඳ විස්තරය (Purchase Description):':'Purchase Description:');
+    inp.placeholder = lang=='si' ? 'උදා: සැපයුම්කරු / බිල්පත් අංකය / මිලදී ගත් විස්තරය...' : 'e.g. Supplier / Invoice / Purchase details...';
+  } else if(val === 'donation'){
+    wrap.style.display = 'block';
+    lbl.innerHTML = '<i class="fa-solid fa-gift"></i> ' + (lang=='si'?'පරිත්‍යාගය පිළිබඳ විස්තරය (Donation Description):':'Donation Description:');
+    inp.placeholder = lang=='si' ? 'උදා: පරිත්‍යාග කළ පුද්ගලයා / ආයතනය සහ විස්තරය...' : 'e.g. Donor name / organization & details...';
+  } else {
+    wrap.style.display = 'none';
+    inp.value = '';
+  }
+}
 
 async function addMemberFromManage(){
   var name = $('mngMemName').value.trim();
@@ -534,14 +776,25 @@ async function addSingleBook(){
   var pubDate = $('sPubDate').value.trim();
   var pages = $('sPages').value.trim();
   var price = $('sPrice').value.trim();
-  var source = $('sSource').value.trim();
+  var receivedType = $('sReceivedType').value.trim();
+  var receivedDesc = $('sReceivedDesc').value.trim();
 
   if(!title){ alert(lang=='si'?'පොතේ නම අත්‍යවශ්‍යයි!':'Book title is required!'); return; }
+  if(!receivedType){
+    alert(lang=='si'?'කරුණාකර "ලැබුණු ආකාරය" (මිලදී ගැනීම් හෝ පරිත්‍යාග) තෝරන්න!':'Please select how the book was received!');
+    return;
+  }
+  if(!receivedDesc){
+    alert(lang=='si'?'කරුණාකර තෝරාගත් ආකාරය පිළිබඳ පොඩි විස්තරයක් ඇතුළත් කරන්න!':'Please enter a short description!');
+    $('sReceivedDesc').focus();
+    return;
+  }
 
   try {
     var res = await api('add_single_book', {}, {
       code: code,
       date: date,
+      received_date: date,
       title: title,
       author: author,
       pub_place: pubPlace,
@@ -549,7 +802,9 @@ async function addSingleBook(){
       pub_date: pubDate,
       pages: pages,
       price: price,
-      source: source
+      received_type: receivedType,
+      received_desc: receivedDesc,
+      source: receivedDesc
     });
     alert(lang=='si'?'පොත සාර්ථකව එකතු කරන ලදී!':'Book added successfully!');
     var genCode = res.code;
@@ -634,7 +889,7 @@ async function auditBookItem() {
   var code = $('auditCode').value.trim(); if(!code) return;
   try {
     var res = await api('audit_check_book', {}, {code: code});
-    $('auditMsg').innerHTML = '<span style="color:#22c55e;"><i class="fa-solid fa-check-circle"></i> ' + (lang=='si' ? 'පොත සාර්ථකව විගණනය කර (Tick) සටහන් කරන ලදී: ' : 'Audited & Ticked: ') + esc(res.book.title) + ' (' + esc(res.book.code) + ')</span>';
+    $('auditMsg').innerHTML = '<span style="color:var(--success);"><i class="fa-solid fa-check-circle"></i> ' + (lang=='si' ? 'පොත සාර්ථකව විගණනය කර (Tick) සටහන් කරන ලදී: ' : 'Audited & Ticked: ') + esc(res.book.title) + ' (' + esc(res.book.code) + ')</span>';
     $('auditCode').value = ''; $('auditCode').focus();
   } catch(e) {
     $('auditMsg').innerHTML = '<span style="color:var(--warn);">' + (lang=='si' ? 'දෝෂයක් හෝ මෙම පොත ඔබේ පුස්තකාලයට අයත් නැත!' : 'Error or book does not belong to your library!') + '</span>';
