@@ -125,7 +125,8 @@ function getTabs(){
     ['members', '<i class="fa-solid fa-users"></i> ' + (lang=='si'?'සාමාජිකයන්':'Members')],
     ['manage', '<i class="fa-solid fa-sliders"></i> ' + (lang=='si'?'කළමනාකරණය':'Management')],
     ['audit', '<i class="fa-solid fa-clipboard-user"></i> ' + (lang=='si'?'විගණනය (Audit)':'Audit')],
-    ['news', '<i class="fa-solid fa-bullhorn"></i> ' + (lang=='si'?'පුවත්':'News')]
+    ['news', '<i class="fa-solid fa-bullhorn"></i> ' + (lang=='si'?'පුවත්':'News')],
+    ['rules', '<i class="fa-solid fa-scale-balanced"></i> ' + (lang=='si'?'නීතිරීති':'Rules & Regulations')]
   ];
 }
 
@@ -1004,6 +1005,30 @@ async function deleteNewsItem(id){
     render();
   }
 }
+
+V.rules = async function(v){
+  var list = [];
+  try {
+    list = await api('get_rules');
+  } catch(e) {}
+  var rulesArr = Array.isArray(list) ? list : [];
+
+  v.innerHTML = libBanner() +
+    '<div class="card" style="border:2px solid var(--ac);">'+
+      '<h2><i class="fa-solid fa-scale-balanced" style="color:var(--ac);"></i> '+(lang=='si'?'පුස්තකාල නීතිරීති (Rules & Regulations)':'Library Rules & Regulations')+'</h2>'+
+      '<p class="muted">'+(lang=='si'?'පරිපාලක (Admin) විසින් ප්‍රකාශයට පත් කර ඇති පුස්තකාල නීතිරීති.':'Rules and regulations published by the administrator.')+'</p>'+
+      (rulesArr.length ? rulesArr.map(function(r, idx){
+        return '<div class="card" style="background:var(--bg);margin-top:12px;border-left:4px solid var(--ac);">'+
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">'+
+            '<h3 style="margin:0;">'+(idx + 1)+'. '+esc(r.title)+'</h3>'+
+            '<span class="tag">Rule #'+esc(r.id)+'</span>'+
+          '</div>'+
+          '<p style="white-space:pre-wrap;margin:10px 0;color:var(--text);">'+esc(r.content)+'</p>'+
+          '<small class="muted"><i class="fa-regular fa-clock"></i> '+fd(r.created_at)+'</small>'+
+        '</div>';
+      }).join('') : '<p class="muted" style="margin-top:12px;">'+(lang=='si'?'දැනට නීතිරීති කිසිවක් ඇතුළත් කර නැත.':'No rules or regulations available.')+'</p>')+
+    '</div>';
+};
 
 render();
 </script>

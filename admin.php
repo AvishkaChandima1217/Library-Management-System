@@ -85,6 +85,7 @@ var IS_ADM = ME.role === 'admin', IS_LIB = ME.role === 'librarian', IS_MEM = ME.
 var selectedLib = 0;
 var LIBRARIES = [];
 var NEWS_CACHE = [];
+var RULES_CACHE = [];
 
 function getMyLibName() {
   if (ME.lib_name && String(ME.lib_name).trim() !== '') return String(ME.lib_name);
@@ -110,7 +111,8 @@ function getTabs(){
     ['members', '<i class="fa-solid fa-users"></i> ' + (lang=='si'?'සාමාජිකයන් සහ ලයිබ්‍රේරියන්':'Members & Librarians')],
     ['manage', '<i class="fa-solid fa-sliders"></i> ' + (lang=='si'?'කළමනාකරණය':'Management')],
     ['audit', '<i class="fa-solid fa-clipboard-user"></i> ' + (lang=='si'?'විගණනය (Audit)':'System Audit')],
-    ['news', '<i class="fa-solid fa-bullhorn"></i> ' + (lang=='si'?'පුවත් සහ නිවේදන':'News & Notices')]
+    ['news', '<i class="fa-solid fa-bullhorn"></i> ' + (lang=='si'?'පුවත් සහ නිවේදන':'News & Notices')],
+    ['rules', '<i class="fa-solid fa-scale-balanced"></i> ' + (lang=='si'?'නීතිරීති':'Rules & Regulations')]
   ];
   if(IS_LIB) return [
     ['dash', '<i class="fa-solid fa-chart-pie"></i> ' + (lang=='si'?'උපකරණ පුවරුව':'Dashboard')],
@@ -120,12 +122,14 @@ function getTabs(){
     ['members', '<i class="fa-solid fa-users"></i> ' + (lang=='si'?'සාමාජිකයන්':'Members')],
     ['manage', '<i class="fa-solid fa-sliders"></i> ' + (lang=='si'?'කළමනාකරණය':'Management')],
     ['audit', '<i class="fa-solid fa-clipboard-user"></i> ' + (lang=='si'?'විගණනය (Audit)':'System Audit')],
-    ['news', '<i class="fa-solid fa-bullhorn"></i> ' + (lang=='si'?'පුවත්':'News')]
+    ['news', '<i class="fa-solid fa-bullhorn"></i> ' + (lang=='si'?'පුවත්':'News')],
+    ['rules', '<i class="fa-solid fa-scale-balanced"></i> ' + (lang=='si'?'නීතිරීති':'Rules & Regulations')]
   ];
   return [
     ['search', '<i class="fa-solid fa-magnifying-glass"></i> ' + (lang=='si'?'පොත් සොයන්න':'Search Books')],
     ['mine', '<i class="fa-solid fa-book-reader"></i> ' + (lang=='si'?'මගේ ගිණුම':'My Account')],
-    ['news', '<i class="fa-solid fa-bullhorn"></i> ' + (lang=='si'?'පුවත්':'News')]
+    ['news', '<i class="fa-solid fa-bullhorn"></i> ' + (lang=='si'?'පුවත්':'News')],
+    ['rules', '<i class="fa-solid fa-scale-balanced"></i> ' + (lang=='si'?'නීතිරීති':'Rules & Regulations')]
   ];
 }
 
@@ -1075,6 +1079,80 @@ async function addNewNews(){
 async function deleteNews(id){
   if(confirm(lang=='si'?'මෙම පුවත මකා දැමීමට අවශ්‍ය බව ස්ථිරද?':'Are you sure you want to delete this news?')) {
     await api('delete_news', {}, {id: id});
+    render();
+  }
+}
+
+V.rules = async function(v){
+  var list = [];
+  try { list = await api('get_rules'); } catch(e) {}
+  RULES_CACHE = Array.isArray(list) ? list : [];
+
+  var adminAddRuleForm = IS_ADM ?
+    '<div class="card" style="border:2px solid var(--ac); box-shadow: 0 4px 15px rgba(79,70,229,0.15); margin-bottom:20px;">'+
+      '<h2><i class="fa-solid fa-scale-balanced" style="color:var(--ac);"></i> '+(lang=='si'?'නව නීතිරීතියක් හෝ රෙගුලාසියක් එක් කරන්න':'Add New Rule / Regulation')+'</h2>'+
+      '<div style="margin-top:10px;"><label><b>'+(lang=='si'?'නීතියේ ශීර්ෂය (Title):':'Rule Title:')+'</b></label><input id="ruleTitle" placeholder="'+(lang=='si'?'උදා: පොත් ආපසු භාර දීමේ කාලය':'e.g. Book Return Period')+'"></div>'+
+      '<div style="margin-top:10px;"><label><b>'+(lang=='si'?'විස්තරය (Details):':'Rule Details:')+'</b></label><textarea id="ruleContent" rows="4" placeholder="'+(lang=='si'?'නීතිරීතියේ විස්තරය මෙහි ලියන්න...':'Write rule and regulation details here...')+'"></textarea></div>'+
+      '<div style="margin-top:15px;"><button class="btn" onclick="addNewRule()"><i class="fa-solid fa-plus"></i> '+(lang=='si'?'නීතිරීතිය සුරකින්න':'Save Rule')+'</button></div>'+
+    '</div>' : '';
+
+  var editRuleBoxHtml = '<div id="admRuleEditBox" style="display:none;margin-bottom:20px;"></div>';
+
+  v.innerHTML = libBanner() + adminAddRuleForm + editRuleBoxHtml +
+    '<div class="card">'+
+      '<h2><i class="fa-solid fa-gavel" style="color:var(--ac);"></i> '+(lang=='si'?'පුස්තකාල නීතිරීති (Rules & Regulations)':'Library Rules & Regulations')+'</h2>'+
+      '<p class="muted">'+(lang=='si'?'පරිපාලක විසින් ප්‍රකාශයට පත් කර ඇති පුස්තකාල නීතිරීති.':'Rules and regulations published by the administrator.')+'</p>'+
+      (RULES_CACHE.length ? RULES_CACHE.map((r, idx) =>
+        '<div class="card" style="background:var(--bg); margin-top:12px; border-left:4px solid var(--ac);">'+
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">'+
+            '<h3 style="margin:0;">'+(idx + 1)+'. '+esc(r.title)+'</h3>'+
+            '<span class="tag">Rule #'+esc(r.id)+'</span>'+
+          '</div>'+
+          '<p style="white-space:pre-wrap; margin:10px 0; color:var(--text);">'+esc(r.content)+'</p>'+
+          '<small class="muted"><i class="fa-regular fa-clock"></i> '+fd(r.created_at)+'</small>'+
+          (IS_ADM ? '<div style="margin-top:12px;display:flex;gap:8px;"><button class="btn alt" style="padding:4px 10px;font-size:12px;" onclick="openAdmEditRule('+r.id+')"><i class="fa-solid fa-pen"></i> '+(lang=='si'?'සංස්කරණය':'Edit')+'</button><button class="btn warn" style="padding:4px 10px;font-size:12px;" onclick="deleteRule('+r.id+')"><i class="fa-solid fa-trash"></i> '+(lang=='si'?'මකන්න':'Delete')+'</button></div>' : '')+
+        '</div>'
+      ).join('') : '<p class="muted" style="margin-top:12px;">'+(lang=='si'?'දැනට නීතිරීති කිසිවක් ඇතුළත් කර නැත':'No rules or regulations available')+'</p>')+
+    '</div>';
+};
+
+function openAdmEditRule(id){
+  var r = RULES_CACHE.find(x => Number(x.id) === Number(id));
+  if(!r) return;
+  var box = $('admRuleEditBox');
+  box.style.display = 'block';
+  box.innerHTML = '<div class="card" style="border:2px solid var(--ac);">'+
+    '<h3><i class="fa-solid fa-pen"></i> '+(lang=='si'?'නීතිරීතිය සංස්කරණය කරන්න':'Edit Rule')+'</h3>'+
+    '<div style="margin-top:10px;"><label>'+(lang=='si'?'ශීර්ෂය:':'Title:')+'</label><input id="admEditRTitle" value="'+esc(r.title)+'"></div>'+
+    '<div style="margin-top:10px;"><label>'+(lang=='si'?'විස්තරය:':'Details:')+'</label><textarea id="admEditRContent" rows="4">'+esc(r.content)+'</textarea></div>'+
+    '<div style="margin-top:12px;display:flex;gap:8px;">'+
+      '<button class="btn" onclick="saveAdmEditRule('+r.id+')"><i class="fa-solid fa-check"></i> '+(lang=='si'?'සුරකින්න':'Save')+'</button>'+
+      '<button class="btn alt" onclick="$(\'admRuleEditBox\').style.display=\'none\'">'+(lang=='si'?'අවලංගු කරන්න':'Cancel')+'</button>'+
+    '</div>'+
+  '</div>';
+}
+
+async function saveAdmEditRule(id){
+  var title = $('admEditRTitle').value.trim();
+  var content = $('admEditRContent').value.trim();
+  if(!title || !content){ alert(lang=='si'?'ශීර්ෂය සහ විස්තරය අවශ්‍යයි!':'Title and details required!'); return; }
+  await api('edit_rule', {}, {id: id, title: title, content: content});
+  alert(lang=='si'?'නීතිරීතිය සාර්ථකව යාවත්කාලීන කරන ලදී!':'Rule updated!');
+  render();
+}
+
+async function addNewRule(){
+  var title = $('ruleTitle').value.trim();
+  var content = $('ruleContent').value.trim();
+  if(!title || !content){ alert(lang=='si'?'කරුණාකර ශීර්ෂය සහ විස්තරය පුරවන්න!':'Please fill title and details!'); return; }
+  await api('add_rule', {}, {title: title, content: content});
+  alert(lang=='si'?'නීතිරීතිය සාර්ථකව එකතු කරන ලදී!':'Rule added successfully!');
+  render();
+}
+
+async function deleteRule(id){
+  if(confirm(lang=='si'?'මෙම නීතිරීතිය මකා දැමීමට අවශ්‍ය බව ස්ථිරද?':'Are you sure you want to delete this rule?')){
+    await api('delete_rule', {}, {id: id});
     render();
   }
 }

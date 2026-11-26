@@ -700,6 +700,36 @@ switch ($a) {
     st('DELETE FROM news WHERE id = ?', [$id]);
     out(['ok' => 1]);
 
+  case 'get_rules':
+    if (!$IS_ADMIN && !$IS_LIB && !$IS_MEM) fail('අවසර නැත');
+    out(all_("SELECT * FROM rules ORDER BY id ASC"));
+
+  case 'add_rule':
+    if (!$IS_ADMIN) fail('අවසර නැත');
+    $title = trim((string)($in['title'] ?? ''));
+    $content = trim((string)($in['content'] ?? ''));
+    if ($title === '' || $content === '') fail('නීතියේ ශීර්ෂය සහ විස්තරය අත්‍යවශ්‍යයි!');
+    $now = date('c');
+    $uid = (int)($me['id'] ?? 0);
+    st('INSERT INTO rules(title, content, created_by, created_at) VALUES(?, ?, ?, ?)', [$title, $content, $uid, $now]);
+    out(['ok' => 1]);
+
+  case 'edit_rule':
+    if (!$IS_ADMIN) fail('අවසර නැත');
+    $id = (int)($in['id'] ?? 0);
+    $title = trim((string)($in['title'] ?? ''));
+    $content = trim((string)($in['content'] ?? ''));
+    if ($id <= 0 || $title === '' || $content === '') fail('දත්ත සම්පූර්ණ නැත!');
+    st('UPDATE rules SET title = ?, content = ?, updated_at = ? WHERE id = ?', [$title, $content, date('c'), $id]);
+    out(['ok' => 1]);
+
+  case 'delete_rule':
+    if (!$IS_ADMIN) fail('අවසර නැත');
+    $id = (int)($in['id'] ?? 0);
+    if ($id <= 0) fail('Invalid ID');
+    st('DELETE FROM rules WHERE id = ?', [$id]);
+    out(['ok' => 1]);
+
   default:
     fail('Unknown action');
 }

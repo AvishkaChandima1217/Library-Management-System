@@ -1,3 +1,8 @@
 
-library2.sqlite
-migrate_to_mysql.php
+# Local / XAMPP / Environment files
+config.php
+*.sqlite
+*.db
+*.log
+.DS_Store
+Thumbs.db

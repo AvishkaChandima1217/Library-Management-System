@@ -131,7 +131,7 @@ function toggleLang(){
 var ME = <?= json_encode($me, JSON_UNESCAPED_UNICODE) ?>;
 var MEMBER_LIB_ID = <?= $memberLibId ?>;
 var MEMBER_LIB_NAME = <?= json_encode($displayLibName, JSON_UNESCAPED_UNICODE) ?>;
-var tab = 'dash';
+var tab = 'rules';
 var rows = [], total = 0, q = '', LD = null, V = {};
 
 function $(i){return document.getElementById(i)}
@@ -158,6 +158,7 @@ function calcFineDetails(dueStr){
 
 function getTabs(){
   return [
+    ['rules', '<i class="fa-solid fa-scale-balanced"></i> ' + (lang=='si'?'නීතිරීති':'Rules & Regulations')],
     ['dash', '<i class="fa-solid fa-gauge-high"></i> ' + (lang=='si'?'උපකරණ පුවරුව':'Dashboard')],
     ['books', '<i class="fa-solid fa-book"></i> ' + (lang=='si'?'පුස්තකාලයේ පොත්':'Library Books')],
     ['borrowed', '<i class="fa-solid fa-book-bookmark"></i> ' + (lang=='si'?'මගේ ණය පොත්':'Borrowed Books')],
@@ -185,6 +186,33 @@ async function getMemberLoansSafe(){
   } catch(e) {}
   return { stats: {}, loans: [] };
 }
+
+V.rules = async function(v){
+  var list = [];
+  try {
+    list = await api('get_rules');
+  } catch(e) {}
+  var rulesArr = Array.isArray(list) ? list : [];
+
+  v.innerHTML =
+    '<div class="card" style="padding:12px 18px;margin-bottom:16px;border-left:4px solid var(--ac);">'+
+      '<i class="fa-solid fa-building-columns" style="color:var(--ac);"></i> <b>'+(lang=='si'?'ඔබ ලියාපදිංචි පුස්තකාලය:':'Your Registered Library:')+'</b> <span class="tag">'+esc(MEMBER_LIB_NAME)+'</span>'+
+    '</div>'+
+    '<div class="card" style="border:2px solid var(--ac);">'+
+      '<h2><i class="fa-solid fa-scale-balanced" style="color:var(--ac);"></i> '+(lang=='si'?'පුස්තකාල නීතිරීති (Rules & Regulations)':'Library Rules & Regulations')+'</h2>'+
+      '<p class="muted">'+(lang=='si'?'පරිපාලක (Admin) විසින් ප්‍රකාශයට පත් කර ඇති පුස්තකාල නීතිරීති.':'Rules and regulations published by the administrator.')+'</p>'+
+      (rulesArr.length ? rulesArr.map(function(r, idx){
+        return '<div class="card" style="background:var(--bg);margin-top:12px;border-left:4px solid var(--ac);">'+
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">'+
+            '<h3 style="margin:0;">'+(idx + 1)+'. '+esc(r.title)+'</h3>'+
+            '<span class="tag">Rule #'+esc(r.id)+'</span>'+
+          '</div>'+
+          '<p style="white-space:pre-wrap;margin:10px 0;color:var(--text);">'+esc(r.content)+'</p>'+
+          '<small class="muted"><i class="fa-regular fa-clock"></i> '+fd(r.created_at)+'</small>'+
+        '</div>';
+      }).join('') : '<p class="muted" style="margin-top:12px;">'+(lang=='si'?'දැනට නීතිරීති කිසිවක් ඇතුළත් කර නැත.':'No rules or regulations available.')+'</p>')+
+    '</div>';
+};
 
 V.dash = async function(v){
   var info = await getMemberLoansSafe();
