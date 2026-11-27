@@ -666,21 +666,81 @@ switch ($a) {
 
   case 'get_news':
     if ($IS_MEM) {
-      out(all_("SELECT * FROM news WHERE target_audience = 'all' ORDER BY id DESC"));
+      $myLibId = !empty($me['library_id']) ? (int)$me['library_id'] : (int)($_GET['lib_id'] ?? 0);
+      try {
+        if ($myLibId > 0) {
+          out(all_(
+            "SELECT * FROM news
+             WHERE COALESCE(target_audience, 'all') IN ('all', '')
+               AND (library_id IS NULL OR library_id = ?)
+             ORDER BY id DESC",
+            [$myLibId]
+          ));
+        }
+        out(all_(
+          "SELECT * FROM news
+           WHERE COALESCE(target_audience, 'all') IN ('all', '')
+             AND library_id IS NULL
+           ORDER BY id DESC"
+        ));
+      } catch (Throwable $e) {
+        out(all_("SELECT * FROM news WHERE COALESCE(target_audience, 'all') IN ('all', '') ORDER BY id DESC"));
+      }
     }
+
+    if ($IS_LIB) {
+      $myLibId = !empty($me['library_id']) ? (int)$me['library_id'] : 0;
+      try {
+        out(all_(
+          "SELECT * FROM news
+           WHERE library_id IS NULL OR library_id = ?
+           ORDER BY id DESC",
+          [$myLibId]
+        ));
+      } catch (Throwable $e) {
+        out(all_("SELECT * FROM news ORDER BY id DESC"));
+      }
+    }
+
     out(all_("SELECT * FROM news ORDER BY id DESC"));
 
   case 'add_news':
     if (!$IS_ADMIN && !$IS_LIB) fail('අවසර නැත');
     $title = trim($in['title'] ?? '');
     $content = trim($in['content'] ?? '');
-    $audience = ($in['target_audience'] ?? 'all') === 'librarian' ? 'librarian' : 'all';
-    if ($IS_LIB) $audience = 'librarian';
     if ($title === '' || $content === '') fail('ශීර්ෂය සහ අන්තර්ගතය අවශ්‍යයි');
-    st(
-      'INSERT INTO news(title, content, target_audience, created_at) VALUES(?, ?, ?, ?)',
-      [$title, $content, $audience, date('c')]
-    );
+
+    $audience = ($in['target_audience'] ?? 'all') === 'librarian' ? 'librarian' : 'all';
+    $libId = null;
+
+    if ($IS_LIB) {
+      $audience = 'all';
+      $libId = !empty($me['library_id']) ? (int)$me['library_id'] : null;
+    } elseif ($IS_ADMIN) {
+      $libId = !empty($in['library_id']) ? (int)$in['library_id'] : null;
+    }
+
+    $uid = (int)($me['id'] ?? 0);
+    $now = date('c');
+
+    try {
+      st(
+        'INSERT INTO news(title, content, target_audience, library_id, created_by, author_role, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)',
+        [$title, $content, $audience, $libId, $uid, $role, $now]
+      );
+    } catch (Throwable $e) {
+      try {
+        st(
+          'INSERT INTO news(title, content, target_audience, library_id, created_at) VALUES(?, ?, ?, ?, ?)',
+          [$title, $content, $audience, $libId, $now]
+        );
+      } catch (Throwable $e2) {
+        st(
+          'INSERT INTO news(title, content, target_audience, created_at) VALUES(?, ?, ?, ?)',
+          [$title, $content, $audience, $now]
+        );
+      }
+    }
     out(['ok' => 1]);
 
   case 'edit_news':

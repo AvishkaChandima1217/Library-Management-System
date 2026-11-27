@@ -15,7 +15,9 @@ if (isset($_POST['u'])) {
   $bad = true;
 }
 
-$me = !empty($_SESSION['u']) ? one('SELECT u.*, l.name as lib_name FROM users u LEFT JOIN libraries l ON l.id=u.library_id WHERE u.id=?', [$_SESSION['u']]) : null;
+$me = !empty($_SESSION['u'])
+  ? one('SELECT u.*, l.name as lib_name FROM users u LEFT JOIN libraries l ON l.id=u.library_id WHERE u.id=?', [$_SESSION['u']])
+  : null;
 
 if (!$me || !in_array($me['role'], ['librarian', 'admin'], true)) { ?>
 <!DOCTYPE html>
@@ -89,18 +91,28 @@ function toggleLang(){
   render();
 }
 var ME = <?= json_encode($me, JSON_UNESCAPED_UNICODE) ?>;
+var MY_LIB_ID = Number(ME.library_id || 0);
 
 function getMyLibName() {
   if (ME.lib_name && String(ME.lib_name).trim() !== '') return String(ME.lib_name);
   var map = { 1: 'Mainnoluwa', 2: 'Mahena', 3: 'Dedigama', 4: 'Algama', 5: 'පුස්තකාලය 5' };
-  return map[Number(ME.library_id)] || ('Library #' + (ME.library_id || ''));
+  return map[MY_LIB_ID] || (MY_LIB_ID ? ('Library #' + MY_LIB_ID) : 'All Libraries');
+}
+
+function getScopedLibId() {
+  if (ME.role === 'librarian') return MY_LIB_ID;
+  return MY_LIB_ID > 0 ? MY_LIB_ID : 0;
 }
 
 function libBanner(){
   var myLib = getMyLibName();
+  var extraMeta = [];
+  if (MY_LIB_ID > 0) extraMeta.push('ID: #' + MY_LIB_ID);
+  if (ME.address) extraMeta.push('<i class="fa-solid fa-location-dot"></i> ' + esc(ME.address));
+  if (ME.phone) extraMeta.push('<i class="fa-solid fa-phone"></i> ' + esc(ME.phone));
   return '<div class="card" style="padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;border-left:4px solid var(--ac);">'+
-    '<span><i class="fa-solid fa-building-columns" style="color:var(--ac);"></i> <b>'+(lang=='si'?'පුස්තකාලය:':'Library:')+'</b> <span class="tag">'+esc(myLib)+'</span></span>'+
-    '<small class="muted">'+(lang=='si'?'ලයිබ්‍රේරියන්: ':'Librarian: ')+esc(ME.name)+'</small>'+
+    '<span><i class="fa-solid fa-building-columns" style="color:var(--ac);"></i> <b>'+(lang=='si'?'පුස්තකාලය:':'Library:')+'</b> <span class="tag">'+esc(myLib)+'</span>'+(extraMeta.length ? ' <small class="muted" style="margin-left:6px;">'+extraMeta.join(' • ')+'</small>' : '')+'</span>'+
+    '<small class="muted">'+(lang=='si'?'ලයිබ්‍රේරියන්: ':'Librarian: ')+esc(ME.name)+' ('+esc(ME.username)+')</small>'+
   '</div>';
 }
 
@@ -135,7 +147,19 @@ var rows=[], total=0, q='', LD=null, V={}, NEWS_CACHE=[];
 function $(i){return document.getElementById(i)}
 function g(i){return $(i).value}
 async function api(a,p,b){
-  var r = await fetch('api.php?a='+encodeURIComponent(a)+'&'+new URLSearchParams(p||{}), b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{});
+  p = Object.assign({}, p || {});
+  var scopedLib = getScopedLibId();
+  if (scopedLib > 0 && p.lib_id === undefined) {
+    p.lib_id = scopedLib;
+  }
+  var bodyPayload = b;
+  if (b && typeof b === 'object' && !Array.isArray(b)) {
+    bodyPayload = Object.assign({}, b);
+    if (scopedLib > 0 && bodyPayload.library_id === undefined) {
+      bodyPayload.library_id = scopedLib;
+    }
+  }
+  var r = await fetch('api.php?a='+encodeURIComponent(a)+'&'+new URLSearchParams(p), bodyPayload?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(bodyPayload)}:{});
   if(r.status===401){location.reload();throw new Error('auth');}
   var j = await r.json(); if(j.error){alert(j.error);throw new Error(j.error)} return j;
 }
@@ -165,9 +189,10 @@ function canEditOrDeleteNews(n){
   if (!ME) return false;
   if (ME.role === 'admin') return true;
   if (ME.role === 'librarian') {
-    var isOwnNews = Number(n.created_by) === Number(ME.id);
-    var isLibAuthor = !n.author_role || n.author_role === 'librarian';
-    return isOwnNews && isLibAuthor;
+    if (n.created_by !== undefined && n.created_by !== null && Number(n.created_by) > 0) {
+      return Number(n.created_by) === Number(ME.id);
+    }
+    return !n.author_role || n.author_role === 'librarian';
   }
   return false;
 }
@@ -183,7 +208,8 @@ V.dash = async function(v){
       '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
         '<div>'+
           '<h1 style="margin:0;"><i class="fa-solid fa-gauge-high"></i> '+(lang=='si'?'ලයිබ්‍රේරියන් උපකරණ පුවරුව':'Librarian Dashboard')+'</h1>'+
-          '<p style="opacity:0.95; margin:6px 0 0 0;">'+(lang=='si'?'ඔබ දැනට පිවිස සිටින පුස්තකාලය: ':'Current Logged-in Library: ')+'<b>'+esc(myLib)+'</b></p>'+
+          '<p style="opacity:0.95; margin:6px 0 0 0;">'+(lang=='si'?'ඔබ දැනට පිවිස සිටින පුස්තකාලය: ':'Current Logged-in Library: ')+'<b>'+esc(myLib)+'</b>'+(MY_LIB_ID ? ' <span style="opacity:0.85;">(Library #' + MY_LIB_ID + ')</span>' : '')+'</p>'+
+          '<p style="opacity:0.9; margin:4px 0 0 0;font-size:13px;"><i class="fa-solid fa-user-tie"></i> <b>'+esc(ME.name)+'</b> • Username: <b>'+esc(ME.username)+'</b>'+(ME.phone ? ' • <i class="fa-solid fa-phone"></i> '+esc(ME.phone) : '')+(ME.address ? ' • <i class="fa-solid fa-location-dot"></i> '+esc(ME.address) : '')+'</p>'+
         '</div>'+
         '<span class="tag" style="background:rgba(255,255,255,0.2);color:#fff;border-color:rgba(255,255,255,0.35);font-size:14px;padding:8px 14px;border-radius:999px;"><i class="fa-solid fa-building-columns"></i> '+esc(myLib)+'</span>'+
       '</div>'+
@@ -253,7 +279,7 @@ V.search = async function(v){
   v.innerHTML = libBanner() + '<div class="card" style="border: 2px solid var(--ac);"><input class="big" id="q" autofocus placeholder="'+(lang=='si'?'🔍 පොතේ නම, කතෘ හෝ Barcode එක ලියන්න...':'🔍 Type book title, author or barcode...')+'" value="'+esc(q)+'" oninput="q=this.value;load(1)" style="margin:0;"></div><div id="res"></div>';
   LD={a:'search',p:()=>({q:q}),f:(b,i)=>{
     var a=b.copies-b.lent;
-    return '<div class="card"><div class="item" onclick="tog('+i+')"><div><b>'+esc(b.title)+'</b> <span class="tag">'+esc(b.lib_name)+'</span><br><small class="muted">'+esc(b.author)+'</small></div><span class="tag'+(a?'':' out')+'">'+a+' / '+b.copies+' '+(lang=='si'?'ඇත':'available')+'</span></div>'+(b.c?'<div class="cps">'+b.c.map(x=>'<div class="cp"><span><b>'+esc(x.code)+'</b> <div style="display:inline-block;background:#fff;padding:2px;margin-left:10px;border-radius:4px;">'+qr(x.code)+'</div></span>'+(x.due?'<span class="tag out">Due '+fd(x.due)+'</span>':'<span class="tag">Available</span>')+'</div>').join('')+'</div>':'')+'</div>';
+    return '<div class="card"><div class="item" onclick="tog('+i+')"><div><b>'+esc(b.title)+'</b> <span class="tag">'+esc(b.lib_name || getMyLibName())+'</span><br><small class="muted">'+esc(b.author)+'</small></div><span class="tag'+(a?'':' out')+'">'+a+' / '+b.copies+' '+(lang=='si'?'ඇත':'available')+'</span></div>'+(b.c?'<div class="cps">'+b.c.map(x=>'<div class="cp"><span><b>'+esc(x.code)+'</b> <div style="display:inline-block;background:#fff;padding:2px;margin-left:10px;border-radius:4px;">'+qr(x.code)+'</div></span>'+(x.due?'<span class="tag out">Due '+fd(x.due)+'</span>':'<span class="tag">Available</span>')+'</div>').join('')+'</div>':'')+'</div>';
   }};
   await load(1);
 };
@@ -959,12 +985,17 @@ V.news = async function(v){
 async function submitNewNews(){
   var title = $('newsTitle').value.trim();
   var content = $('newsContent').value.trim();
-  var audience = (ME && ME.role === 'librarian') ? 'librarian' : 'all';
+  var audience = 'all';
   if(!title || !content){
     alert(lang=='si'?'කරුණාකර ශීර්ෂය සහ අන්තර්ගතය පුරවන්න!':'Please fill title and content!');
     return;
   }
-  await api('add_news', {}, {title: title, content: content, target_audience: audience});
+  await api('add_news', {}, {
+    title: title,
+    content: content,
+    target_audience: audience,
+    library_id: MY_LIB_ID || null
+  });
   alert(lang=='si'?'පුවත සාර්ථකව එකතු කරන ලදී!':'News added successfully!');
   render();
 }
@@ -980,7 +1011,7 @@ function openEditNews(id){
       '<div style="margin-top:10px;"><label>'+(lang=='si'?'ශීර්ෂය (Title):':'Title:')+'</label><input id="editNewsTitle" value="'+esc(n.title)+'"></div>'+
       '<div style="margin-top:10px;"><label>'+(lang=='si'?'අන්තර්ගතය (Content):':'Content:')+'</label><textarea id="editNewsContent" rows="4">'+esc(n.content)+'</textarea></div>'+
       '<div style="margin-top:12px;display:flex;gap:8px;">'+
-        '<button class="btn" onclick="saveEditedNews('+n.id+', \''+esc(n.target_audience || 'librarian')+'\')"><i class="fa-solid fa-check"></i> '+(lang=='si'?'සුරකින්න (Save)':'Save Changes')+'</button>'+
+        '<button class="btn" onclick="saveEditedNews('+n.id+', \''+esc(n.target_audience || 'all')+'\')"><i class="fa-solid fa-check"></i> '+(lang=='si'?'සුරකින්න (Save)':'Save Changes')+'</button>'+
         '<button class="btn alt" onclick="$(\'newsEditBox\').style.display=\'none\'">'+(lang=='si'?'අවලංගු කරන්න':'Cancel')+'</button>'+
       '</div>'+
     '</div>';
@@ -994,7 +1025,7 @@ async function saveEditedNews(id, audience){
     alert(lang=='si'?'ශීර්ෂය සහ අන්තර්ගතය අවශ්‍යයි!':'Title and content required!');
     return;
   }
-  await api('edit_news', {}, {id: id, title: title, content: content, target_audience: audience || 'librarian'});
+  await api('edit_news', {}, {id: id, title: title, content: content, target_audience: audience || 'all'});
   alert(lang=='si'?'පුවත යාවත්කාලීන කරන ලදී!':'News updated successfully!');
   render();
 }

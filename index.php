@@ -44,7 +44,7 @@ if (!empty($_SESSION['u'])) {
     overflow: hidden;
   }
 
-  /* Full-screen rich scenic backdrop */
+  /* Full-screen clear scenic backdrop */
   .portal-bg {
     position: relative;
     min-height: 100vh;
@@ -54,48 +54,14 @@ if (!empty($_SESSION['u'])) {
     align-items: center;
     justify-content: space-between;
     background:
-      linear-gradient(180deg, rgba(16, 68, 145, 0.52) 0%, rgba(28, 108, 205, 0.25) 45%, rgba(12, 34, 74, 0.72) 100%),
-      linear-gradient(90deg, rgba(16, 42, 24, 0.45) 0%, rgba(36, 118, 214, 0.15) 50%, rgba(16, 36, 68, 0.55) 100%),
-      url('https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1800&q=80') center/cover no-repeat fixed;
+      linear-gradient(180deg, rgba(16, 68, 145, 0.24) 0%, rgba(28, 108, 205, 0.08) 45%, rgba(12, 34, 74, 0.42) 100%),
+      url('https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1800&q=85') center/cover no-repeat fixed;
     transition: opacity 0.65s ease, transform 0.65s ease;
   }
 
   .portal-bg.leaving {
     opacity: 0;
     transform: scale(1.03);
-  }
-
-  /* Left books & Right building visual layers */
-  .scenic-left {
-    position: fixed;
-    left: -30px;
-    bottom: 64px;
-    width: min(36vw, 440px);
-    height: min(56vh, 430px);
-    background:
-      linear-gradient(90deg, rgba(10, 25, 15, 0.15), rgba(10, 25, 15, 0.65)),
-      url('https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=1000&q=80') center/cover no-repeat;
-    border-radius: 0 28px 28px 0;
-    box-shadow: 12px 16px 36px rgba(0, 0, 0, 0.42);
-    opacity: 0.92;
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  .scenic-right {
-    position: fixed;
-    right: -24px;
-    bottom: 64px;
-    width: min(36vw, 450px);
-    height: min(58vh, 450px);
-    background:
-      linear-gradient(270deg, rgba(12, 26, 54, 0.18), rgba(12, 26, 54, 0.68)),
-      url('https://images.unsplash.com/photo-1564981797816-1043664bf78d?auto=format&fit=crop&w=1000&q=80') center/cover no-repeat;
-    border-radius: 28px 0 0 28px;
-    box-shadow: -12px 16px 36px rgba(0, 0, 0, 0.42);
-    opacity: 0.9;
-    pointer-events: none;
-    z-index: 1;
   }
 
   /* Center Splash Animation Content */
@@ -144,7 +110,7 @@ if (!empty($_SESSION['u'])) {
   .hero-header {
     text-align: center;
     color: #ffffff;
-    text-shadow: 0 4px 18px rgba(6, 22, 54, 0.68);
+    text-shadow: 0 4px 18px rgba(6, 22, 54, 0.75);
     animation: heroSlideUp 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
   }
   .welcome-script-row {
@@ -181,7 +147,7 @@ if (!empty($_SESSION['u'])) {
   }
   .hero-title span.gold-word {
     color: #facc15;
-    text-shadow: 0 3px 16px rgba(0, 0, 0, 0.6);
+    text-shadow: 0 3px 16px rgba(0, 0, 0, 0.65);
   }
   .tagline-row {
     display: flex;
@@ -273,9 +239,6 @@ if (!empty($_SESSION['u'])) {
   }
 
   @media (max-width: 768px) {
-    .scenic-left, .scenic-right {
-      display: none;
-    }
     .welcome-script-row::before,
     .welcome-script-row::after,
     .tagline-row::before,
@@ -287,9 +250,6 @@ if (!empty($_SESSION['u'])) {
 </head>
 <body>
 <div id="portalBg" class="portal-bg">
-  <div class="scenic-left" aria-hidden="true"></div>
-  <div class="scenic-right" aria-hidden="true"></div>
-
   <main class="portal-main">
     <div class="crest-wrap" aria-hidden="true">
       <div class="crest-inner">

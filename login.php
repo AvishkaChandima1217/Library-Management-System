@@ -70,7 +70,7 @@ if (isset($_POST['u'])) {
     overflow-x: hidden;
   }
 
-  /* Full-screen rich scenic backdrop */
+  /* Full-screen backdrop with continuous live motion */
   .portal-bg {
     position: relative;
     min-height: 100vh;
@@ -79,43 +79,53 @@ if (isset($_POST['u'])) {
     flex-direction: column;
     align-items: center;
     justify-content: space-between;
-    background:
-      linear-gradient(180deg, rgba(16, 68, 145, 0.52) 0%, rgba(28, 108, 205, 0.25) 45%, rgba(12, 34, 74, 0.72) 100%),
-      linear-gradient(90deg, rgba(16, 42, 24, 0.45) 0%, rgba(36, 118, 214, 0.15) 50%, rgba(16, 36, 68, 0.55) 100%),
-      url('https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1800&q=80') center/cover no-repeat fixed;
+    overflow: hidden;
   }
 
-  /* Left books & Right building visual layers (without small white sign) */
-  .scenic-left {
+  .portal-bg::before {
+    content: "";
     position: fixed;
-    left: -30px;
-    bottom: 64px;
-    width: min(36vw, 440px);
-    height: min(56vh, 430px);
+    inset: -32px;
     background:
-      linear-gradient(90deg, rgba(10, 25, 15, 0.15), rgba(10, 25, 15, 0.65)),
-      url('https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=1000&q=80') center/cover no-repeat;
-    border-radius: 0 28px 28px 0;
-    box-shadow: 12px 16px 36px rgba(0, 0, 0, 0.42);
-    opacity: 0.92;
+      linear-gradient(180deg, rgba(16, 68, 145, 0.22) 0%, rgba(28, 108, 205, 0.08) 45%, rgba(12, 34, 74, 0.38) 100%),
+      url('https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1800&q=85') center/cover no-repeat;
+    z-index: 0;
     pointer-events: none;
-    z-index: 1;
+    animation: bgSlowPanZoom 28s ease-in-out infinite alternate;
+    will-change: transform;
   }
 
-  .scenic-right {
+  /* Continuous soft ambient light pulse in background */
+  .bg-ambient-glow {
     position: fixed;
-    right: -24px;
-    bottom: 64px;
-    width: min(36vw, 450px);
-    height: min(58vh, 450px);
-    background:
-      linear-gradient(270deg, rgba(12, 26, 54, 0.18), rgba(12, 26, 54, 0.68)),
-      url('https://images.unsplash.com/photo-1564981797816-1043664bf78d?auto=format&fit=crop&w=1000&q=80') center/cover no-repeat;
-    border-radius: 28px 0 0 28px;
-    box-shadow: -12px 16px 36px rgba(0, 0, 0, 0.42);
-    opacity: 0.9;
-    pointer-events: none;
+    inset: 0;
     z-index: 1;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 22% 28%, rgba(250, 204, 21, 0.16), transparent 42%),
+      radial-gradient(circle at 78% 65%, rgba(56, 189, 248, 0.18), transparent 46%);
+    animation: ambientPulse 7s ease-in-out infinite alternate;
+    will-change: opacity, transform;
+  }
+
+  /* Floating particles layer behind login card */
+  .bg-particles {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .bg-particle {
+    position: absolute;
+    bottom: -24px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(254, 240, 138, 0.95) 0%, rgba(250, 204, 21, 0.35) 55%, transparent 100%);
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.55);
+    opacity: 0;
+    animation: riseParticle var(--dur, 12s) linear var(--delay, 0s) infinite;
+    will-change: transform, opacity;
   }
 
   /* Center Portal Content */
@@ -142,7 +152,7 @@ if (isset($_POST['u'])) {
     align-items: center;
     justify-content: center;
     margin-bottom: 8px;
-    animation: floatCrest 3.2s ease-in-out infinite;
+    animation: crestPop 0.75s cubic-bezier(0.22, 1, 0.36, 1) both, floatCrest 3.4s ease-in-out 0.75s infinite;
   }
   .crest-inner {
     width: 64px;
@@ -162,9 +172,9 @@ if (isset($_POST['u'])) {
   .hero-header {
     text-align: center;
     color: #ffffff;
-    text-shadow: 0 4px 18px rgba(6, 22, 54, 0.65);
+    text-shadow: 0 4px 18px rgba(6, 22, 54, 0.75);
     margin-bottom: 34px;
-    animation: heroFadeIn 0.7s ease-out both;
+    animation: heroFadeIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
   }
   .welcome-script-row {
     display: flex;
@@ -178,10 +188,11 @@ if (isset($_POST['u'])) {
     content: "";
     width: 72px;
     height: 1.5px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.75));
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.8));
+    animation: lineExpand 0.9s ease-out 0.2s both;
   }
   .welcome-script-row::after {
-    background: linear-gradient(270deg, transparent, rgba(255,255,255,0.75));
+    background: linear-gradient(270deg, transparent, rgba(255,255,255,0.8));
   }
   .welcome-script {
     font-family: 'Great Vibes', cursive;
@@ -200,7 +211,9 @@ if (isset($_POST['u'])) {
   }
   .hero-title span.gold-word {
     color: #facc15;
-    text-shadow: 0 3px 14px rgba(0, 0, 0, 0.55);
+    text-shadow: 0 3px 14px rgba(0, 0, 0, 0.65);
+    display: inline-block;
+    animation: goldShimmer 4s ease-in-out infinite;
   }
   .tagline-row {
     display: flex;
@@ -217,10 +230,11 @@ if (isset($_POST['u'])) {
     content: "";
     width: 82px;
     height: 1.5px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.65));
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.7));
+    animation: lineExpand 0.9s ease-out 0.3s both;
   }
   .tagline-row::after {
-    background: linear-gradient(270deg, transparent, rgba(255,255,255,0.65));
+    background: linear-gradient(270deg, transparent, rgba(255,255,255,0.7));
   }
 
   /* Login Card */
@@ -230,12 +244,12 @@ if (isset($_POST['u'])) {
     position: relative;
     padding-top: 34px;
     opacity: <?= $bad ? '1' : '0' ?>;
-    transform: translateY(<?= $bad ? '0' : '16px' ?>);
-    transition: opacity 0.45s ease, transform 0.45s ease;
+    transform: translateY(<?= $bad ? '0' : '24px' ?>) scale(<?= $bad ? '1' : '0.97' ?>);
+    transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1), transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
   }
   .login-card-wrap.show {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 
   .top-book-badge {
@@ -255,15 +269,21 @@ if (isset($_POST['u'])) {
     color: #ffffff;
     font-size: 26px;
     z-index: 4;
+    animation: badgeBob 3.6s ease-in-out infinite;
   }
 
   .login-card {
-    background: rgba(255, 255, 255, 0.96);
-    backdrop-filter: blur(8px);
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(6px);
     border-radius: 20px;
     padding: 44px 26px 24px 26px;
     box-shadow: 0 20px 45px rgba(4, 20, 48, 0.38);
-    border: 1px solid rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.85);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  .login-card-wrap.show .login-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 24px 52px rgba(4, 20, 48, 0.45);
   }
 
   .card-heading {
@@ -288,6 +308,7 @@ if (isset($_POST['u'])) {
     color: #0a2e63;
     font-size: 15px;
     pointer-events: none;
+    transition: transform 0.2s ease, color 0.2s ease;
   }
   .field-input {
     width: 100%;
@@ -300,11 +321,16 @@ if (isset($_POST['u'])) {
     font-size: 14.5px;
     font-weight: 500;
     outline: none;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.2s ease;
   }
   .field-input:focus {
     border-color: #0c3b7a;
-    box-shadow: 0 0 0 3px rgba(12, 59, 122, 0.14);
+    box-shadow: 0 0 0 4px rgba(12, 59, 122, 0.16);
+    transform: translateY(-1px);
+  }
+  .field-box:focus-within .field-icon-left {
+    color: #eab308;
+    transform: translateY(-50%) scale(1.1);
   }
   .field-input::placeholder {
     color: #64748b;
@@ -322,12 +348,16 @@ if (isset($_POST['u'])) {
     cursor: pointer;
     padding: 4px 6px;
     font-size: 15px;
+    transition: color 0.2s ease, transform 0.2s ease;
   }
   .eye-toggle:hover {
     color: #0a2e63;
+    transform: translateY(-50%) scale(1.1);
   }
 
   .login-submit-btn {
+    position: relative;
+    overflow: hidden;
     width: 100%;
     height: 46px;
     margin-top: 4px;
@@ -344,13 +374,28 @@ if (isset($_POST['u'])) {
     gap: 9px;
     cursor: pointer;
     box-shadow: 0 8px 18px rgba(6, 37, 82, 0.32);
-    transition: transform 0.15s ease, filter 0.2s ease;
+    transition: transform 0.18s ease, filter 0.2s ease, box-shadow 0.2s ease;
+  }
+  .login-submit-btn::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -120%;
+    width: 65%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+    transform: skewX(-22deg);
+    transition: left 0.55s ease;
   }
   .login-submit-btn:hover {
     filter: brightness(1.07);
+    box-shadow: 0 11px 22px rgba(6, 37, 82, 0.4);
+  }
+  .login-submit-btn:hover::after {
+    left: 140%;
   }
   .login-submit-btn:active {
-    transform: translateY(1px);
+    transform: translateY(1px) scale(0.99);
   }
 
   .err-msg {
@@ -363,6 +408,7 @@ if (isset($_POST['u'])) {
     font-size: 12.5px;
     font-weight: 600;
     text-align: center;
+    animation: shakeError 0.42s ease;
   }
 
   .card-footer-note {
@@ -382,6 +428,7 @@ if (isset($_POST['u'])) {
     z-index: 4;
     width: 100%;
     margin-top: auto;
+    animation: footerSlideUp 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
   }
   .gold-wave {
     width: 100%;
@@ -408,19 +455,79 @@ if (isset($_POST['u'])) {
     font-weight: 700;
   }
 
+  @keyframes bgSlowPanZoom {
+    0%   { transform: scale(1) translate3d(0, 0, 0); }
+    50%  { transform: scale(1.06) translate3d(-14px, -6px, 0); }
+    100% { transform: scale(1.09) translate3d(12px, -10px, 0); }
+  }
+  @keyframes ambientPulse {
+    0%   { opacity: 0.65; transform: scale(1); }
+    100% { opacity: 1; transform: scale(1.06); }
+  }
+  @keyframes riseParticle {
+    0% {
+      transform: translate3d(0, 0, 0) scale(0.6);
+      opacity: 0;
+    }
+    15% {
+      opacity: var(--max-op, 0.75);
+    }
+    85% {
+      opacity: var(--max-op, 0.75);
+    }
+    100% {
+      transform: translate3d(var(--drift-x, 28px), -108vh, 0) scale(1.15);
+      opacity: 0;
+    }
+  }
+  @keyframes crestPop {
+    from { opacity: 0; transform: scale(0.75) translateY(-10px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+  }
   @keyframes heroFadeIn {
-    from { opacity: 0; transform: translateY(-12px); }
+    from { opacity: 0; transform: translateY(-14px); }
     to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes lineExpand {
+    from { transform: scaleX(0); opacity: 0; }
+    to   { transform: scaleX(1); opacity: 1; }
+  }
+  @keyframes goldShimmer {
+    0%, 100% { filter: brightness(1); }
+    50%      { filter: brightness(1.18) drop-shadow(0 0 8px rgba(250, 204, 21, 0.45)); }
   }
   @keyframes floatCrest {
     0%, 100% { transform: translateY(0); }
-    50%      { transform: translateY(-4px); }
+    50%      { transform: translateY(-5px); }
+  }
+  @keyframes badgeBob {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50%      { transform: translateX(-50%) translateY(-4px); }
+  }
+  @keyframes shakeError {
+    0%, 100% { transform: translateX(0); }
+    20%      { transform: translateX(-6px); }
+    40%      { transform: translateX(6px); }
+    60%      { transform: translateX(-4px); }
+    80%      { transform: translateX(4px); }
+  }
+  @keyframes footerSlideUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+    .login-card-wrap {
+      opacity: 1 !important;
+      transform: none !important;
+    }
   }
 
   @media (max-width: 768px) {
-    .scenic-left, .scenic-right {
-      display: none;
-    }
     .welcome-script-row::before,
     .welcome-script-row::after,
     .tagline-row::before,
@@ -432,8 +539,8 @@ if (isset($_POST['u'])) {
 </head>
 <body>
 <div class="portal-bg">
-  <div class="scenic-left" aria-hidden="true"></div>
-  <div class="scenic-right" aria-hidden="true"></div>
+  <div class="bg-ambient-glow" aria-hidden="true"></div>
+  <div id="bgParticles" class="bg-particles" aria-hidden="true"></div>
 
   <main class="portal-main">
     <div class="crest-wrap" aria-hidden="true">
@@ -533,11 +640,36 @@ function togglePw() {
   }
 }
 
+(function createBgParticles() {
+  var container = document.getElementById('bgParticles');
+  if (!container) return;
+  var count = 18;
+  for (var i = 0; i < count; i++) {
+    var dot = document.createElement('span');
+    dot.className = 'bg-particle';
+    var size = 5 + (i % 5) * 2.5;
+    var leftPct = ((i * 5.7) % 96) + 2;
+    var durSec = 10 + (i % 6) * 2.5;
+    var delaySec = -((i * 1.4) % durSec);
+    var driftPx = (i % 2 === 0 ? 1 : -1) * (18 + (i % 4) * 10);
+    var maxOp = (0.4 + (i % 4) * 0.12).toFixed(2);
+
+    dot.style.width = size + 'px';
+    dot.style.height = size + 'px';
+    dot.style.left = leftPct + '%';
+    dot.style.setProperty('--dur', durSec + 's');
+    dot.style.setProperty('--delay', delaySec + 's');
+    dot.style.setProperty('--drift-x', driftPx + 'px');
+    dot.style.setProperty('--max-op', maxOp);
+    container.appendChild(dot);
+  }
+})();
+
 window.addEventListener('DOMContentLoaded', function() {
   setTimeout(function() {
     var card = document.getElementById('loginCardWrap');
     if (card) card.classList.add('show');
-  }, 600);
+  }, 450);
 });
 </script>
 </body>

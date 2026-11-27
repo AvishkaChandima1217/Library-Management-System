@@ -97,6 +97,112 @@ $displayLibName = !empty($me['lib_name'])
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="stylesheet" href="style.css">
 <script>if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}</script>
+<style>
+  /* Mobile-friendly Top Scrolling News Ticker */
+  .news-ticker-wrap {
+    display: flex;
+    align-items: center;
+    background: linear-gradient(90deg, var(--warn), #dc2626);
+    color: #fff;
+    border-radius: 12px;
+    margin-bottom: 14px;
+    overflow: hidden;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14);
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+  }
+  .news-ticker-badge {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.22);
+    font-weight: 800;
+    font-size: 12px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+  }
+  .news-ticker-track {
+    flex: 1 1 auto;
+    overflow: hidden;
+    position: relative;
+    padding: 10px 0;
+  }
+  .news-ticker-move {
+    display: inline-block;
+    white-space: nowrap;
+    padding-left: 100%;
+    font-size: 13.5px;
+    font-weight: 600;
+    animation: memberNewsScroll 18s linear infinite;
+  }
+  .news-ticker-wrap:hover .news-ticker-move,
+  .news-ticker-wrap:active .news-ticker-move {
+    animation-play-state: paused;
+  }
+  @keyframes memberNewsScroll {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-100%); }
+  }
+  .news-ticker-go {
+    flex: 0 0 auto;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  .mem-news-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--warn);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    margin-left: 5px;
+  }
+  @media (max-width: 640px) {
+    .top .in {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .top .who {
+      width: 100%;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px !important;
+      font-size: 12.5px;
+    }
+    .wrap nav {
+      display: flex;
+      overflow-x: auto;
+      white-space: nowrap;
+      gap: 8px;
+      padding-bottom: 6px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .wrap nav button {
+      flex: 0 0 auto;
+      font-size: 13px;
+      padding: 9px 13px;
+    }
+    .news-ticker-move {
+      font-size: 12.5px;
+      animation-duration: 14s;
+    }
+    .news-ticker-go span.go-txt {
+      display: none;
+    }
+  }
+</style>
 </head>
 <body>
 <div class="top"><div class="in">
@@ -110,6 +216,14 @@ $displayLibName = !empty($me['lib_name'])
 </div></div>
 
 <div class="wrap">
+  <div id="topNewsTicker" class="news-ticker-wrap" onclick="go('news')" title="View News">
+    <div class="news-ticker-badge"><i class="fa-solid fa-bullhorn"></i> <span id="tickerBadgeLbl">පුවත් ALERT</span></div>
+    <div class="news-ticker-track">
+      <div id="tickerText" class="news-ticker-move">Admin සහ Librarian ලබා දෙන නවතම පුවත් බැලීමට මෙතැන Click කරන්න...</div>
+    </div>
+    <div class="news-ticker-go"><span class="go-txt" id="tickerGoLbl">පුවත්</span> <i class="fa-solid fa-chevron-right"></i></div>
+  </div>
+
   <nav id="nav"></nav>
   <div id="view"></div>
 </div>
@@ -125,6 +239,7 @@ function toggleLang(){
   lang = lang === 'si' ? 'en' : 'si';
   localStorage.setItem('lang', lang);
   $('langLbl').innerText = lang === 'si' ? 'EN' : 'සිං';
+  updateTickerTexts();
   render();
 }
 
@@ -133,6 +248,8 @@ var MEMBER_LIB_ID = <?= $memberLibId ?>;
 var MEMBER_LIB_NAME = <?= json_encode($displayLibName, JSON_UNESCAPED_UNICODE) ?>;
 var tab = 'rules';
 var rows = [], total = 0, q = '', LD = null, V = {};
+var latestNewsList = [];
+var unreadNewsCount = 0;
 
 function $(i){return document.getElementById(i)}
 async function api(a,p,b){
@@ -156,23 +273,70 @@ function calcFineDetails(dueStr){
   return { extraDays: extraDays, fine: extraDays * 5 };
 }
 
+function updateTickerTexts(){
+  var badgeLbl = $('tickerBadgeLbl');
+  var goLbl = $('tickerGoLbl');
+  var moveEl = $('tickerText');
+  if(badgeLbl) badgeLbl.innerText = lang === 'si' ? 'පුවත් ALERT' : 'NEWS ALERT';
+  if(goLbl) goLbl.innerText = lang === 'si' ? 'පුවත්' : 'News';
+  if(moveEl){
+    if(Array.isArray(latestNewsList) && latestNewsList.length){
+      var items = latestNewsList.slice(0, 6).map(function(n){
+        var who = (n.author_role === 'librarian') ? 'Librarian' : 'Admin';
+        return '📢 [' + who + '] ' + (n.title || '') + (n.content ? ' — ' + n.content : '');
+      });
+      moveEl.innerText = items.join('     •     ');
+    } else {
+      moveEl.innerText = lang === 'si'
+        ? 'Admin සහ Librarian ලබා දෙන නවතම පුවත් බැලීමට මෙතැන Click කරන්න...'
+        : 'Tap here to view latest news from Admin & Librarian...';
+    }
+  }
+
+  var cBadge = $('memNewsBadge');
+  if(cBadge){
+    if(unreadNewsCount > 0){
+      cBadge.style.display = 'inline-flex';
+      cBadge.innerText = unreadNewsCount;
+    } else {
+      cBadge.style.display = 'none';
+    }
+  }
+}
+
+async function fetchMemberNewsTicker(){
+  try {
+    var r = await fetch('api.php?a=get_news&lib_id=' + encodeURIComponent(MEMBER_LIB_ID));
+    if(!r.ok) return;
+    var data = await r.json();
+    if(Array.isArray(data)){
+      latestNewsList = data;
+      unreadNewsCount = data.filter(function(x){ return !x.is_read; }).length;
+      updateTickerTexts();
+    }
+  } catch(e) {}
+}
+
 function getTabs(){
   return [
     ['rules', '<i class="fa-solid fa-scale-balanced"></i> ' + (lang=='si'?'නීතිරීති':'Rules & Regulations')],
     ['dash', '<i class="fa-solid fa-gauge-high"></i> ' + (lang=='si'?'උපකරණ පුවරුව':'Dashboard')],
     ['books', '<i class="fa-solid fa-book"></i> ' + (lang=='si'?'පුස්තකාලයේ පොත්':'Library Books')],
     ['borrowed', '<i class="fa-solid fa-book-bookmark"></i> ' + (lang=='si'?'මගේ ණය පොත්':'Borrowed Books')],
-    ['fines', '<i class="fa-solid fa-coins"></i> ' + (lang=='si'?'දඩ ගෙවීම්':'Fines')]
+    ['fines', '<i class="fa-solid fa-coins"></i> ' + (lang=='si'?'දඩ ගෙවීම්':'Fines')],
+    ['news', '<i class="fa-solid fa-bullhorn"></i> ' + (lang=='si'?'පුවත්':'News') + ' <span id="memNewsBadge" class="mem-news-count" style="display:none;">0</span>']
   ];
 }
 
 function nav(){
   var TABS = getTabs();
   $('nav').innerHTML = TABS.map(t => '<button class="'+(tab===t[0]?'on':'')+'" onclick="go(\''+t[0]+'\')">'+t[1]+'</button>').join('');
+  updateTickerTexts();
 }
 function go(t){tab=t; render()}
 async function render(){
   $('langLbl').innerText = lang === 'si' ? 'EN' : 'සිං';
+  updateTickerTexts();
   nav();
   var v = $('view');
   v.innerHTML = '<div class="card"><p class="muted">'+(lang=='si'?'පූරණය වෙමින් පවතී...':'Loading...')+'</p></div>';
@@ -186,6 +350,38 @@ async function getMemberLoansSafe(){
   } catch(e) {}
   return { stats: {}, loans: [] };
 }
+
+V.news = async function(v){
+  var list = [];
+  try {
+    var res = await api('get_news');
+    if (Array.isArray(res)) list = res;
+  } catch(e) {}
+  latestNewsList = list;
+  unreadNewsCount = list.filter(function(x){ return !x.is_read; }).length;
+  updateTickerTexts();
+
+  v.innerHTML =
+    '<div class="card" style="padding:12px 18px;margin-bottom:16px;border-left:4px solid var(--ac);">'+
+      '<i class="fa-solid fa-building-columns" style="color:var(--ac);"></i> <b>'+(lang=='si'?'ඔබ ලියාපදිංචි පුස්තකාලය:':'Your Registered Library:')+'</b> <span class="tag">'+esc(MEMBER_LIB_NAME)+'</span>'+
+    '</div>'+
+    '<div class="card" style="border:2px solid var(--ac);">'+
+      '<h2 style="margin:0 0 6px 0;"><i class="fa-solid fa-bullhorn" style="color:var(--ac);"></i> '+(lang=='si'?'Admin සහ Librarian පුවත්':'Admin & Librarian News')+'</h2>'+
+      '<p class="muted" style="margin:0 0 12px 0;">'+(lang=='si'?'පරිපාලක සහ ලයිබ්‍රේරියන් මඟින් ලබා දෙන නවතම නිවේදන.':'Latest announcements from Admin and Librarian.')+'</p>'+
+      (list.length ? list.map(function(n){
+        var sender = (n.author_role === 'librarian')
+          ? '<span class="tag"><i class="fa-solid fa-user-tie"></i> Librarian</span>'
+          : '<span class="tag"><i class="fa-solid fa-user-shield"></i> Admin</span>';
+        return '<div class="card" style="background:var(--bg);margin-top:12px;border-left:4px solid var(--ac);">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">'+
+            '<h3 style="margin:0;">'+esc(n.title)+' '+sender+'</h3>'+
+            '<small class="muted"><i class="fa-regular fa-clock"></i> '+fd(n.created_at)+'</small>'+
+          '</div>'+
+          '<p style="white-space:pre-wrap;margin:10px 0 0 0;line-height:1.55;">'+esc(n.content)+'</p>'+
+        '</div>';
+      }).join('') : '<p class="muted" style="margin-top:12px;">'+(lang=='si'?'දැනට පුවත් කිසිවක් නොමැත.':'No news available right now.')+'</p>')+
+    '</div>';
+};
 
 V.rules = async function(v){
   var list = [];
@@ -250,6 +446,7 @@ V.dash = async function(v){
       '<button class="btn" onclick="go(\'books\')"><i class="fa-solid fa-book"></i> '+(lang=='si'?'පුස්තකාලයේ පොත් බලන්න':'Browse Library Books')+'</button>'+
       '<button class="btn alt" onclick="go(\'borrowed\')"><i class="fa-solid fa-book-bookmark"></i> '+(lang=='si'?'මගේ ණය පොත්':'My Borrowed Books')+'</button>'+
       '<button class="btn warn" onclick="go(\'fines\')"><i class="fa-solid fa-coins"></i> '+(lang=='si'?'දඩ ගෙවීම් විස්තර':'View Fines')+'</button>'+
+      '<button class="btn alt" onclick="go(\'news\')"><i class="fa-solid fa-bullhorn"></i> '+(lang=='si'?'පුවත් බලන්න':'View News')+'</button>'+
     '</div>';
 };
 
@@ -358,6 +555,8 @@ V.fines = async function(v){
 };
 
 render();
+fetchMemberNewsTicker();
+setInterval(fetchMemberNewsTicker, 15000);
 </script>
 </body>
 </html>
